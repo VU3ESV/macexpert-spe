@@ -38,7 +38,9 @@ TMP="${RUNNER_TEMP:-$(mktemp -d)}"
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_0=all
 
 echo "==> Building standalone universal app"
-./build-app.sh
+# SKIP_SIGN=1: build-app.sh writes the bundle + Info.plist but does NOT sign — we embed the
+# .appex below and sign the whole thing inside-out (with entitlements) + notarize ourselves.
+SKIP_SIGN=1 ./build-app.sh
 [ -d "$APP" ] || { echo "ERROR: $APP not found after build-app.sh"; exit 1; }
 
 echo "==> Building the extension (.appex)"

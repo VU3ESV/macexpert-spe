@@ -42,6 +42,12 @@ struct ConnectionView: View {
                         websocketSettings
                     }
 
+                    Toggle("Reconnect on launch", isOn: $vm.autoReconnectOnLaunch)
+                        .toggleStyle(.checkbox)
+                        .controlSize(.small)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+
                     HStack {
                         if !vm.errorMessage.isEmpty {
                             Text(vm.errorMessage)

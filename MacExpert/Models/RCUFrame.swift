@@ -52,8 +52,9 @@ struct RCUFrame: Equatable {
     let currentAntenna: Int?
 
     /// Current temperature scale value shown on the TEMP/FANS screen —
-    /// typically "CELSIUS" or "FARENHEIT" (sic, firmware typo). Nil on
-    /// other screens.
+    /// "CELSIUS" or "FAHRENHEIT" (correctly spelled — earlier notes
+    /// that called it "FARENHEIT" were wrong, confirmed 2026-05-07
+    /// against a real 1.5K-FA capture). Nil on other screens.
     let temperatureScale: String?
 
     /// Current fan management value shown on the TEMP/FANS screen —

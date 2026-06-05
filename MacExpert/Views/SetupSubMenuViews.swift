@@ -605,7 +605,7 @@ struct ManualTuneSubMenuView: View {
                         .font(LCDStyle.font)
                         .foregroundStyle(LCDStyle.green)
                     Spacer()
-                    Text("\(vm.state.paTemp)\u{00B0}C")
+                    Text("\(vm.state.paTemp)\u{00B0}\(vm.cachedTempUnit)")
                         .font(LCDStyle.font)
                         .foregroundStyle(LCDStyle.green)
                 }

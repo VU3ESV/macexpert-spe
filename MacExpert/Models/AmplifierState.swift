@@ -40,6 +40,10 @@ struct AmplifierState: Equatable, Codable {
         case memBank = "mem_bank"
         case warnings, error
         case modelId = "model_id"
+        // Forward-compat alias: some spe-remote builds (and possibly
+        // future ones) send the field as "model" instead of "model_id".
+        // Both decode into the same `modelId` property.
+        case modelAlt = "model"
     }
 
     /// Custom decoder — spe-remote JSON only sends a subset of fields.
@@ -65,7 +69,39 @@ struct AmplifierState: Equatable, Codable {
         memBank = (try? c.decode(String.self, forKey: .memBank)) ?? ""
         warnings = (try? c.decode(String.self, forKey: .warnings)) ?? ""
         error = (try? c.decode(String.self, forKey: .error)) ?? ""
-        modelId = (try? c.decode(String.self, forKey: .modelId)) ?? ""
+        // Try the canonical key first, then the legacy alias.
+        modelId = (try? c.decode(String.self, forKey: .modelId))
+              ?? (try? c.decode(String.self, forKey: .modelAlt))
+              ?? ""
+    }
+
+    /// Custom encoder. We don't actually serialise this type for
+    /// network transit (the Pi sends JSON to us, never the other
+    /// direction), but Codable requires Encodable conformance once the
+    /// CodingKeys enum has cases. We write the canonical `model_id`
+    /// only — never the legacy `model` alias.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(opStatus,     forKey: .opStatus)
+        try c.encode(txStatus,     forKey: .txStatus)
+        try c.encode(input,        forKey: .input)
+        try c.encode(band,         forKey: .band)
+        try c.encode(txAntenna,    forKey: .txAntenna)
+        try c.encode(atuStatus,    forKey: .atuStatus)
+        try c.encode(rxAntenna,    forKey: .rxAntenna)
+        try c.encode(pLevel,       forKey: .pLevel)
+        try c.encode(pOut,         forKey: .pOut)
+        try c.encode(swr,          forKey: .swr)
+        try c.encode(aswr,         forKey: .aswr)
+        try c.encode(voltage,      forKey: .voltage)
+        try c.encode(drain,        forKey: .drain)
+        try c.encode(paTemp,       forKey: .paTemp)
+        try c.encode(tempLower,    forKey: .tempLower)
+        try c.encode(tempCombiner, forKey: .tempCombiner)
+        try c.encode(memBank,      forKey: .memBank)
+        try c.encode(warnings,     forKey: .warnings)
+        try c.encode(error,        forKey: .error)
+        try c.encode(modelId,      forKey: .modelId)
     }
 
     init(

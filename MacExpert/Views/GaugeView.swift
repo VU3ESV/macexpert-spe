@@ -129,9 +129,26 @@ struct GaugesView: View {
                      label: "DRAIN", unit: "A", format: "%.1f",
                      colors: [.cyan, .cyan, .cyan, .orange, .red])
 
-            ArcGauge(value: vm.state.tempValue, min: 0, max: 80,
-                     label: "TEMP", unit: "\u{00B0}C", format: "%.0f",
+            // Temp unit + scale follow the amp's TEMP/FANS setting if
+            // the user has visited that sub-menu (which gives us the
+            // CELSIUS/FARENHEIT marker via the RCU frame). Otherwise
+            // tap the gauge to toggle C↔F manually — the choice is
+            // persisted across launches via vm.cachedTempUnit.
+            // Range is the same physical envelope in either unit
+            // (80°C ≈ 176°F → 180°F max), so the colour stops keep
+            // their relative meaning (green idle → red overheat).
+            ArcGauge(value: vm.state.tempValue,
+                     min: vm.cachedTempUnit == "F" ? 32  : 0,
+                     max: vm.cachedTempUnit == "F" ? 180 : 80,
+                     label: "TEMP",
+                     unit: "\u{00B0}\(vm.cachedTempUnit)",
+                     format: "%.0f",
                      colors: [.cyan, .green, .green, .orange, .red])
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    vm.cachedTempUnit = (vm.cachedTempUnit == "F") ? "C" : "F"
+                }
+                .help("Tap to toggle °C / °F (auto-detects from TEMP/FANS menu)")
 
             ArcGauge(value: vm.state.voltageValue, min: 30, max: 55,
                      label: "VOLTAGE", unit: "V", format: "%.1f",

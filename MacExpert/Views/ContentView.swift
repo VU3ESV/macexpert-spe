@@ -89,20 +89,29 @@ struct ContentView: View {
                             SetupMenuView()
                                 .frame(height: normalBlockHeight > 0 ? normalBlockHeight : nil)
                                 .transition(.opacity)
-                        } else if vm.state.opStatus == "Stby" {
+                        } else if vm.state.opStatus == "Stby" && !vm.isStandbyTX {
                             // In STANDBY mirror the amp's LCD as a banner
-                            // sized to the menu display height — same
-                            // footprint as a SETUP sub-menu so toggling
-                            // between STANDBY / SETUP / OPERATE doesn't
-                            // shift anything below. Gauges hide here
-                            // (they're all zero when idle anyway). The
-                            // banner relies on state.opStatus alone so a
-                            // transient "banner lines empty" (e.g. right
-                            // after reconnect) doesn't flip the view back
-                            // to the power meter and then back again.
-                            StandbyBannerView()
-                                .frame(height: normalBlockHeight > 0 ? normalBlockHeight : nil)
-                                .transition(.opacity)
+                            // in place of the power meter, but keep
+                            // GaugesView below — DRAIN / TEMP / VOLTAGE
+                            // are still meaningful while idle (PSU
+                            // voltage, ambient temp), and SWR pins to
+                            // 1.0. The whole VStack is pinned to
+                            // normalBlockHeight so toggling between
+                            // STANDBY / SETUP / OPERATE doesn't shift
+                            // anything below; the banner takes the
+                            // leftover space above the gauges.
+                            //
+                            // Exception: if the rig is keyed while the
+                            // amp is in STANDBY (bypass), fall through to
+                            // PowerDisplay+Gauges so the operator can
+                            // see the drive level. PowerDisplayView caps
+                            // the scale at 200 W in this state.
+                            VStack(spacing: 6) {
+                                StandbyBannerView()
+                                GaugesView()
+                            }
+                            .frame(height: normalBlockHeight > 0 ? normalBlockHeight : nil)
+                            .transition(.opacity)
                         } else {
                             VStack(spacing: 6) {
                                 PowerDisplayView()

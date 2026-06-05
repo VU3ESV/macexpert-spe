@@ -7,7 +7,18 @@ final class AmplifierViewModel {
     // MARK: - Published State
     var state = AmplifierState()
     var isConnected = false
-    var connectionMode: ConnectionMode = .serial
+    var connectionMode: ConnectionMode = .serial {
+        didSet { UserDefaults.standard.set(connectionMode.rawValue, forKey: "connectionMode") }
+    }
+
+    /// True when the user wants the app to automatically reconnect to
+    /// the last successful server on launch. Persisted across launches.
+    /// Default: true — the daily case is "Pi server is always running,
+    /// I open MacExpert and it Just Works." Disable from the Connection
+    /// view if you want manual control.
+    var autoReconnectOnLaunch: Bool = true {
+        didSet { UserDefaults.standard.set(autoReconnectOnLaunch, forKey: "autoReconnectOnLaunch") }
+    }
     var detectedModel: AmplifierModel = .unknown
     var statusMessage: String = ""
     var errorMessage: String = ""
@@ -37,6 +48,14 @@ final class AmplifierViewModel {
     /// Displayed as a status chip so the user can see the active CAT at a
     /// glance without navigating into SETUP.
     var cachedCatType: String = ""
+
+    /// Last-known temperature unit reported by the amp on its TEMP/FANS
+    /// screen. Persists across launches so the gauge picks the right
+    /// unit even before the user has visited that menu in this session.
+    /// Values: "C" (default) or "F".
+    var cachedTempUnit: String = UserDefaults.standard.string(forKey: "cachedTempUnit") ?? "C" {
+        didSet { UserDefaults.standard.set(cachedTempUnit, forKey: "cachedTempUnit") }
+    }
 
     /// Item names shown in the CAT sub-menu, in cursor nav order. Used to
     /// map the cursor index on a `.catMenu` frame to the highlighted name.
@@ -86,6 +105,23 @@ final class AmplifierViewModel {
     /// Empty when no standby frame has been seen yet or we're not in
     /// standby.
     var standbyBannerLines: [String] = []
+
+    /// True when the amp is sitting in STANDBY but the rig is keyed.
+    /// In this state the amp is bypassed (RF passes through without
+    /// amplification), so the meter sees only the exciter's drive
+    /// level — typically 25–100 W. We use this to swap the standby
+    /// banner out for the live power meter and force a 200 W scale.
+    var isStandbyTX: Bool {
+        state.opStatus == "Stby" && state.txStatus == "TX"
+    }
+
+    /// Full-scale watts for the power meter / bar. 200 W when the amp
+    /// is bypassed (`isStandbyTX`), otherwise the model's per-level
+    /// maximum (e.g. 500 / 1000 / 1500 on a 1.5K-FA at L/M/H).
+    var powerScaleWatts: Int {
+        if isStandbyTX { return 200 }
+        return detectedModel.maxPowerForLevel(state.pLevel)
+    }
 
     /// Timestamp of the last info-screen frame. Used by an auto-clear
     /// watchdog so the overlay closes when the amp transitions back to
@@ -275,6 +311,25 @@ final class AmplifierViewModel {
         loadSettings()
         refreshPorts()
         observePortChanges()
+        // Auto-reconnect after a small delay so SwiftUI has time to
+        // build the view hierarchy first (otherwise connection-error
+        // toasts can fire before there's anything to display them).
+        if autoReconnectOnLaunch && hasUsableLastConnection {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                connect()
+            }
+        }
+    }
+
+    /// True when persisted settings include enough to attempt a
+    /// reconnect to the last-known transport (a serial port path for
+    /// .serial, a host for .websocket).
+    private var hasUsableLastConnection: Bool {
+        switch connectionMode {
+        case .serial:    return !selectedPortPath.isEmpty
+        case .websocket: return !wsHost.isEmpty && wsPort > 0
+        }
     }
 
     // MARK: - Connection
@@ -775,6 +830,33 @@ final class AmplifierViewModel {
                     subMenuCursorIndex = idx
                 }
             }
+            // Cache the amp's selected temperature unit so the main
+            // power/gauge view picks the right unit + scale on every
+            // subsequent render (including future launches via
+            // UserDefaults).
+            //
+            // The amp's TEMP/FANS screen prints "CELSIUS" or
+            // "FAHRENHEIT" (the latter properly spelled — earlier
+            // notes that called it "FARENHEIT" were wrong, see captured
+            // screenshots from 2026-05-07). We pivot on the first
+            // letter, which uniquely identifies either option:
+            //    'F' → Fahrenheit, 'C' → Celsius.
+            //
+            // Only flip on a POSITIVE marker match. If we can't
+            // confidently identify either letter (transient/partial
+            // read while navigating into the sub-menu), leave the
+            // cached value alone — otherwise an ambiguous read would
+            // silently clobber a manually-set unit (the old "F → C
+            // auto-flips, C → F never does" symptom).
+            if let scale = frame.temperatureScale?.uppercased(),
+               let first = scale.first {
+                if first == "F" {
+                    if cachedTempUnit != "F" { cachedTempUnit = "F" }
+                } else if first == "C" {
+                    if cachedTempUnit != "C" { cachedTempUnit = "C" }
+                }
+                // else: ambiguous read — keep current cached value.
+            }
 
         case .manualTune:
             isInSetupMode = true
@@ -1067,6 +1149,17 @@ final class AmplifierViewModel {
         }
         let savedWSPort = UserDefaults.standard.integer(forKey: "wsPort")
         if savedWSPort > 0 { wsPort = savedWSPort }
+
+        if let modeRaw = UserDefaults.standard.string(forKey: "connectionMode"),
+           let mode = ConnectionMode(rawValue: modeRaw) {
+            connectionMode = mode
+        }
+        // Auto-reconnect default is true; only honour a stored "false"
+        // (UserDefaults.bool returns false for missing keys, which we
+        // don't want to misread as "user disabled it").
+        if UserDefaults.standard.object(forKey: "autoReconnectOnLaunch") != nil {
+            autoReconnectOnLaunch = UserDefaults.standard.bool(forKey: "autoReconnectOnLaunch")
+        }
     }
 
     private func observePortChanges() {

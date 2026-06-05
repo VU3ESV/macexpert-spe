@@ -67,17 +67,20 @@ struct PowerDisplayView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(white: 0.13)))
     }
 
-    /// Max power based on current power level setting (L/M/H)
+    /// Max power for the bar / ticks. Forced to 200 W when the amp is
+    /// in STANDBY but keyed (bypass mode — exciter drive only),
+    /// otherwise the per-level maximum from the model.
     private var currentMaxPower: Int {
-        vm.detectedModel.maxPowerForLevel(vm.state.pLevel)
+        vm.powerScaleWatts
     }
 
     private var levelLabel: String {
+        if vm.isStandbyTX { return "STBY \(currentMaxPower)W" }
         switch vm.state.pLevel {
-        case "L": "LOW \(currentMaxPower)W"
-        case "M": "MID \(currentMaxPower)W"
-        case "H": "HIGH \(currentMaxPower)W"
-        default: "\(currentMaxPower)W"
+        case "L": return "LOW \(currentMaxPower)W"
+        case "M": return "MID \(currentMaxPower)W"
+        case "H": return "HIGH \(currentMaxPower)W"
+        default:  return "\(currentMaxPower)W"
         }
     }
 
