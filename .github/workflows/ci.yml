@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & test (macOS 14)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use latest Xcode
+        # MacExpert uses @Observable / SwiftUI main-actor isolation that needs a Swift 6-era
+        # toolchain; the runner's default (Xcode 15.4 / Swift 5.10) fails to compile it.
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Build
+        run: swift build -v
+
+      - name: Test
+        run: swift test
+
+      - name: Build plugin package (.appex / .radioplugin)
+        run: |
+          # XcodeGen emits a recent project format; select the newest installed Xcode
+          # so xcodebuild can read it (the runner default may be older).
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          xcodebuild -version
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          ./scripts/make-radioplugin.sh
+          ls -lh dist/MacExpert.radioplugin

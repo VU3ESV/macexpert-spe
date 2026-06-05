@@ -1,0 +1,163 @@
+name: Release
+
+# Produces a GitHub Release with the macOS app (.zip) and the Amateur Radio Suite plugin
+# (.radioplugin). Triggered three ways:
+#   1. PR merged into main  -> auto-bump the latest vX.Y.Z tag (patch) and release.
+#   2. Push a vX.Y.Z tag    -> release that tag.
+#   3. workflow_dispatch     -> release the given version (tag created on main if absent).
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (without the leading v, e.g. 0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build & publish release
+    # Only on a real merge (or tag/dispatch) — a closed-but-unmerged PR must not release.
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use latest Xcode
+        # MacExpert needs a Swift 6-era toolchain (SwiftUI main-actor isolation); the
+        # runner default (Xcode 15.4) fails. Applies to swift build/test + build-app.sh.
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+
+      - name: Resolve version + tag
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ inputs.version }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            git fetch --tags --force --quiet
+            LATEST="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+            if [ -z "$LATEST" ]; then
+              V="0.1.0"
+            else
+              IFS=. read -r MA MI PA <<< "${LATEST#v}"
+              V="${MA}.${MI}.$((PA + 1))"
+            fi
+            while git rev-parse "refs/tags/v$V" >/dev/null 2>&1; do
+              IFS=. read -r MA MI PA <<< "$V"; V="${MA}.${MI}.$((PA + 1))"
+            done
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "tag=v$V"   >> "$GITHUB_OUTPUT"
+          echo "Releasing v$V"
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build & test
+        run: |
+          swift build
+          swift test
+
+      - name: Build signed + notarized app (.app with embedded extension) + .zip/.dmg
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          # Signing/notarization secrets. When unset, package-signed.sh falls back to ad-hoc
+          # and skips notarization — the build still succeeds, but the released app's extension
+          # will not register in the Suite on other Macs.
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          ./scripts/package-signed.sh        # -> dist/MacExpert-<version>-macOS.{zip,dmg}
+
+      - name: Build plugin package (.appex / .radioplugin)
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          xcodebuild -version
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          ./scripts/make-radioplugin.sh
+
+      - name: Package release assets
+        id: package
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          # package-signed.sh already produced the signed/notarized .zip + .dmg in dist/.
+          test -f "dist/MacExpert-${V}-macOS.zip" || { echo "::error::signed .zip missing"; ls -la dist; exit 1; }
+          cp dist/MacExpert.radioplugin "dist/MacExpert-${V}.radioplugin"
+          ( cd dist && shasum -a 256 "MacExpert-${V}-macOS.zip" "MacExpert-${V}-macOS.dmg" "MacExpert-${V}.radioplugin" > SHA256SUMS )
+          ls -la dist
+
+      - name: Compose release notes
+        env:
+          V: ${{ steps.ver.outputs.version }}
+          # 'true' only when the signing + notary secrets are present (notarized build).
+          NOTARIZED: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.NOTARY_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## MacExpert ${V}"
+            echo
+            echo "macOS controller for the SPE Expert amplifier + Amateur Radio Suite plugin (\`MacExpert-${V}.radioplugin\`)."
+            echo
+            echo "### Install (standalone app)"
+            echo
+            echo "1. Download \`MacExpert-${V}-macOS.dmg\` (or \`.zip\`) below."
+            echo "2. Open it and drag **MacExpert.app** to \`/Applications\`."
+            if [ "${NOTARIZED}" = "true" ]; then
+              echo "3. Launch it — signed with Developer ID and **Apple-notarized**, so no Gatekeeper bypass is needed."
+            else
+              echo "3. **One-time Gatekeeper bypass** (this build is ad-hoc-signed, not Apple-notarized):"
+              echo "   \`\`\`sh"
+              echo "   xattr -dr com.apple.quarantine /Applications/MacExpert.app"
+              echo "   \`\`\`"
+              echo "4. Launch normally."
+            fi
+            echo
+            echo "### Use as an Amateur Radio Suite plugin"
+            echo
+            if [ "${NOTARIZED}" = "true" ]; then
+              echo "Installing **MacExpert.app** to \`/Applications\` and launching it once registers the embedded extension; the [Suite](https://github.com/VU3ESV/AmateurRadioSuite) then discovers it automatically under **Manage Plugins** — enable **SPE Expert** to host it in a tab."
+              echo
+              echo "Or sideload the package: in the Suite, **Manage Plugins → Browse → \"Add Plugin from File…\"**, pick \`MacExpert-${V}.radioplugin\`, then **Install**."
+            else
+              echo "> ⚠️ This is an **ad-hoc** build — its extension will not register in the Suite on other Macs. A Developer-ID-signed + Apple-notarized release is required for that."
+            fi
+          } > RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          gh release create "${{ steps.ver.outputs.tag }}" \
+            --target main \
+            --title "${{ steps.ver.outputs.tag }}" \
+            --generate-notes \
+            --notes-file RELEASE_NOTES.md \
+            "dist/MacExpert-${V}-macOS.zip" \
+            "dist/MacExpert-${V}-macOS.dmg" \
+            "dist/MacExpert-${V}.radioplugin" \
+            dist/SHA256SUMS

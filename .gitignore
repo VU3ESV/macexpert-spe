@@ -1,8 +1,12 @@
 .DS_Store
 .build/
+dist/
+MacExpert.app/
+
+# XcodeGen-generated project for the plugin .appex (regenerate with xcodegen)
+Xcode/*.xcodeproj/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 DerivedData/
 .swiftpm/
 Package.resolved
-dist/

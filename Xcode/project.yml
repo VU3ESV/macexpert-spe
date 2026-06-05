@@ -1,0 +1,52 @@
+# XcodeGen spec for the SPE Expert (MacExpert) out-of-process plugin (ExtensionKit `.appex`).
+#
+# To avoid restructuring this app's SwiftPM package, the .appex target COMPILES THE APP'S OWN
+# SOURCES directly (../MacExpert), excluding the standalone `@main` in MacExpertApp.swift (the
+# extension provides its own entry in Extension/) and the asset catalog/resources. The
+# standalone app and Package.swift are untouched.
+#
+# The generated .xcodeproj is gitignored -- regenerate with:  (cd Xcode && xcodegen generate)
+# `scripts/make-radioplugin.sh` does this and packages the `.radioplugin`.
+
+name: MacExpertPlugin
+options:
+  bundleIdPrefix: org.vu3esv.radiosuite
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  ORSSerialPort:
+    url: https://github.com/armadsen/ORSSerialPort.git
+    from: "2.1.0"
+
+targets:
+  MacExpertExtension:
+    type: extensionkit-extension
+    platform: macOS
+    sources:
+      - path: Extension
+        excludes:
+          - plugin.json    # packaged alongside the .appex, not compiled
+      - path: ../MacExpert
+        excludes:
+          - MacExpertApp.swift   # the standalone @main; the extension has its own entry
+          - Resources            # asset catalog / icns (not referenced via Bundle.module)
+    info:
+      path: Extension/Info.plist
+      properties:
+        CFBundleName: SPE Expert
+        CFBundleDisplayName: SPE Expert
+        EXAppExtensionAttributes:
+          EXExtensionPointIdentifier: org.vu3esv.radiosuite.plugin
+    settings:
+      base:
+        # IMPORTANT: this bundle id is the plugin's identity -- it must match
+        # `plugin.json`'s `id` so the suite correlates the manifest to the extension.
+        PRODUCT_BUNDLE_IDENTIFIER: org.vu3esv.radiosuite.SPE
+        MARKETING_VERSION: "1.0.0"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"      # ad-hoc for local dev; Developer-ID needed to ship
+    dependencies:
+      - package: ORSSerialPort
+        product: ORSSerial

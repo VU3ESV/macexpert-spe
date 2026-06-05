@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- ExtensionKit extensions must be sandboxed for macOS to register and load them. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- MacExpert controls the SPE Expert amplifier over RS-232 / USB-serial (ORSSerialPort). -->
+	<key>com.apple.security.device.serial</key>
+	<true/>
+	<!-- And over TCP/IP for network/serial adapters. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>

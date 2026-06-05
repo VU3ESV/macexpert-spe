@@ -1,0 +1,12 @@
+{
+  "id": "org.vu3esv.radiosuite.SPE",
+  "name": "SPE Expert",
+  "version": "1.0.0",
+  "sdkVersion": "1.2",
+  "minHostVersion": "1.0",
+  "isolation": "out-of-process",
+  "capabilities": ["serial", "network.client"],
+  "systemImage": "bolt.circle",
+  "author": "VU2CPL",
+  "homepage": "https://github.com/vu2cpl/macexpert-spe"
+}
