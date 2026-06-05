@@ -26,10 +26,55 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Skip the release when a merged PR / pushed change only touches documentation.
+  # Tag pushes and manual dispatch always release.
+  gate:
+    name: Decide whether to release (skip docs-only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ev="${{ github.event_name }}"
+          # Explicit releases are never skipped.
+          if [ "$ev" = "workflow_dispatch" ]; then echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$ev" = "push" ]; then
+            case "${{ github.ref }}" in
+              refs/tags/*) echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            esac
+            files="$(gh api --paginate "repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.event.after }}" -q '.files[].filename' || true)"
+          elif [ "$ev" = "pull_request" ]; then
+            files="$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" -q '.[].filename')"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "Changed files:"; printf '  %s\n' "$files"
+          # Docs-only when EVERY changed file is markdown, under docs/, or LICENSE.
+          skip=true
+          [ -z "$files" ] && skip=false   # unknown/empty diff -> release, don't skip
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              *.md|docs/*|*/docs/*|LICENSE) : ;;
+              *) skip=false; break ;;
+            esac
+          done <<< "$files"
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          [ "$skip" = true ] && echo "::notice::Docs-only change — skipping release."
+
   release:
+    needs: gate
     name: Build & publish release
     # Only on a real merge (or tag/dispatch) — a closed-but-unmerged PR must not release.
-    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
+    # Also skip when the change only touched docs (see the gate job).
+    if: (github.event_name != 'pull_request' || github.event.pull_request.merged == true) && needs.gate.outputs.skip != 'true'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
