@@ -51,7 +51,7 @@ jobs:
             esac
             files="$(gh api --paginate "repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.event.after }}" -q '.files[].filename' || true)"
           elif [ "$ev" = "pull_request" ]; then
-            files="$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" -q '.[].filename')"
+            files="$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" -q '.[].filename' || true)"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
@@ -67,7 +67,7 @@ jobs:
             esac
           done <<< "$files"
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
-          [ "$skip" = true ] && echo "::notice::Docs-only change — skipping release."
+          if [ "$skip" = true ]; then echo "::notice::Docs-only change — skipping release."; fi
 
   release:
     needs: gate
