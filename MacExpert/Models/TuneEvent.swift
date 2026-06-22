@@ -52,6 +52,10 @@ struct TuneEvent: Decodable, Equatable {
     /// A connection *error* phase the UI should surface to the operator.
     var isConnectionError: Bool { phase == "RADIO_ERROR" || phase == "FLEX_ERROR" }
 
+    /// A successful connection phase — the rig is up. Used to clear a
+    /// stale connection-error banner once the radio comes back.
+    var isConnectionEstablished: Bool { phase == "RADIO_CONNECTED" || phase == "FLEX_CONNECTED" }
+
     /// SWEEP_STEP messages look like `"3/7: 14.1250 MHz"`. Extract the
     /// (current, total) integers for a progress bar; returns nil if the
     /// message doesn't match the format.
