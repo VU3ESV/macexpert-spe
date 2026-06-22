@@ -42,6 +42,10 @@ final class AmplifierViewModel {
     /// Used by the progress bar. Nil before the first SWEEP_STEP and
     /// after the terminal phase.
     var sweepProgress: (current: Int, total: Int)?
+    /// Banner text shown for the last radio connection error (RADIO_ERROR /
+    /// FLEX_ERROR). Remembered so a subsequent RADIO_CONNECTED can clear
+    /// exactly that banner without stomping an unrelated error on screen.
+    private var radioErrorBanner: String?
 
     /// Latest radio config from the Pi (`config_event:"radio"`). Drives
     /// the radio-settings picker so the operator can choose Flex vs SunSDR
@@ -1143,10 +1147,24 @@ final class AmplifierViewModel {
         // as a config_event message, so it's ignored here.
         if event.isConnectionLifecycle {
             if event.isConnectionError {
-                errorMessage = event.message.isEmpty
+                let banner = event.message.isEmpty
                     ? "Radio connection failed"
                     : event.message
+                errorMessage = banner
+                radioErrorBanner = banner
+            } else if event.isConnectionEstablished {
+                // Rig is back — clear the stale connection-error banner,
+                // following the existing "clear on positive state change"
+                // pattern, but only if it's still our RADIO_ERROR text on
+                // screen so we don't stomp an unrelated error.
+                if let banner = radioErrorBanner, errorMessage == banner {
+                    errorMessage = ""
+                }
+                radioErrorBanner = nil
             }
+            // RADIO_* phases are connection housekeeping, not tune progress —
+            // short-circuit before `lastTuneEvent = event` so they never feed
+            // the sweep state machine below.
             return
         }
 
@@ -1203,7 +1221,11 @@ final class AmplifierViewModel {
     /// — the Pi also connects lazily at tune start. WS-only; a silent
     /// no-op in serial mode / while disconnected.
     func radioConnect() {
-        guard let ws = connection as? WebSocketConnection, ws.isConnected else { return }
+        // Mirror radioDisconnect's `!isSweeping` guard for symmetry: the
+        // Sweep sheet shouldn't be opening mid-cycle, but don't poke the
+        // connection lifecycle if a sweep is already in flight.
+        guard !isSweeping,
+              let ws = connection as? WebSocketConnection, ws.isConnected else { return }
         ws.sendRawCommand("radio_connect")
     }
 
