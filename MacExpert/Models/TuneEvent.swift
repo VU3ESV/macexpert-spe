@@ -40,6 +40,18 @@ struct TuneEvent: Decodable, Equatable {
     /// so the panel treats them separately from the tune phases above.
     var isFlexLifecycle: Bool { phase.hasPrefix("FLEX_") }
 
+    /// Radio connection-lifecycle phases — `RADIO_CONNECTING`,
+    /// `RADIO_CONNECTED`, `RADIO_DISCONNECTED`, `RADIO_ERROR`, and
+    /// `RADIO_CONFIG_UPDATED`. spe-remote opens the rig on demand and may
+    /// be a Flex or a SunSDR (TCI); these are not tune progress. `FLEX_`
+    /// is still matched for tolerance with an older server.
+    var isConnectionLifecycle: Bool {
+        phase.hasPrefix("RADIO_") || phase.hasPrefix("FLEX_")
+    }
+
+    /// A connection *error* phase the UI should surface to the operator.
+    var isConnectionError: Bool { phase == "RADIO_ERROR" || phase == "FLEX_ERROR" }
+
     /// SWEEP_STEP messages look like `"3/7: 14.1250 MHz"`. Extract the
     /// (current, total) integers for a progress bar; returns nil if the
     /// message doesn't match the format.

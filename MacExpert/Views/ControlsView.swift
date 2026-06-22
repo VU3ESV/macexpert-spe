@@ -5,6 +5,7 @@ struct ControlsView: View {
     @State private var showPowerOffConfirm = false
     @State private var showPowerOnConfirm = false
     @State private var showSweepPanel = false
+    @State private var showRadioPanel = false
 
     var body: some View {
         VStack(spacing: 4) {
@@ -36,6 +37,11 @@ struct ControlsView: View {
                 PanelButton("SWEEP", icon: "arrow.left.and.right.righttriangle.left.righttriangle.right",
                             accent: vm.isSweeping ? .green : nil) {
                     showSweepPanel = true
+                }
+                // RADIO — pick which rig drives TUNE/SWEEP (Flex vs SunSDR)
+                // and edit its settings; applies live on the Pi.
+                PanelButton("RADIO", icon: "antenna.radiowaves.left.and.right") {
+                    showRadioPanel = true
                 }
             }
 
@@ -102,6 +108,9 @@ struct ControlsView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(white: 0.13)))
         .sheet(isPresented: $showSweepPanel) {
             SweepPanelView()
+        }
+        .sheet(isPresented: $showRadioPanel) {
+            RadioSettingsView()
         }
     }
 }

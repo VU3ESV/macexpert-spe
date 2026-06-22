@@ -35,12 +35,12 @@ struct SweepPanelView: View {
         }
         .padding(20)
         .frame(minWidth: 420, idealWidth: 460, minHeight: 320)
-        // On-demand Flex lifecycle: opening this panel pre-warms the Pi's
-        // SmartSDR connection; closing it (while idle) drops it again. The
-        // Pi also connects lazily at tune start and disconnects when the
-        // cycle is over, so this is purely a head-start.
-        .onAppear { vm.flexConnect() }
-        .onDisappear { vm.flexDisconnect() }
+        // On-demand radio lifecycle: opening this panel pre-warms the Pi's
+        // rig connection (Flex or SunSDR); closing it (while idle) drops it
+        // again. The Pi also connects lazily at tune start and disconnects
+        // when the cycle is over, so this is purely a head-start.
+        .onAppear { vm.radioConnect() }
+        .onDisappear { vm.radioDisconnect() }
     }
 
     // MARK: - Sub-views

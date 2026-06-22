@@ -43,6 +43,12 @@ final class AmplifierViewModel {
     /// after the terminal phase.
     var sweepProgress: (current: Int, total: Int)?
 
+    /// Latest radio config from the Pi (`config_event:"radio"`). Drives
+    /// the radio-settings picker so the operator can choose Flex vs SunSDR
+    /// and edit the active rig's host/port. Nil until the first
+    /// `get_config` reply.
+    var radioConfig: RadioConfig?
+
     // RCU capture pipeline (labeled 0x6A LCD packet logger).
     // `var` (not `let`) so SwiftUI's @Bindable projection can drill into its
     // observable properties (e.g. $vm.captureLogger.currentLabel).
@@ -445,8 +451,13 @@ final class AmplifierViewModel {
                     ws.onTuneEvent = { [weak self] event in
                         self?.handleTuneEvent(event)
                     }
+                    ws.onRadioConfig = { [weak self] cfg in
+                        self?.radioConfig = cfg
+                    }
                     connection = ws
                     try await ws.connect()
+                    // Pull the current radio config so the picker reflects it.
+                    ws.sendRawCommand("get_config")
                 }
 
                 errorMessage = ""
@@ -1121,17 +1132,19 @@ final class AmplifierViewModel {
     /// Consume a tune-orchestrator phase transition broadcast by the Pi.
     /// Updates the published sweep state so the Sweep panel re-renders.
     func handleTuneEvent(_ event: TuneEvent) {
-        // Flex connection-lifecycle events (FLEX_CONNECTING / CONNECTED /
-        // DISCONNECTED / ERROR) ride the same channel now that the Pi
-        // connects the radio on demand. They are not tune progress — keep
-        // them out of the sweep status so they don't clobber a finished
-        // sweep result or spin the status icon while idle. Surface only a
-        // connection *error* (e.g. radio off when the panel opens) via the
-        // standard error banner.
-        if event.isFlexLifecycle {
-            if event.phase == "FLEX_ERROR" {
+        // Radio connection-lifecycle events (RADIO_CONNECTING / CONNECTED /
+        // DISCONNECTED / ERROR / CONFIG_UPDATED — FLEX_* on an older
+        // server) ride the same channel now that the Pi connects the rig
+        // on demand. They are not tune progress — keep them out of the
+        // sweep status so they don't clobber a finished sweep result or
+        // spin the status icon while idle. Surface only a connection
+        // *error* (e.g. radio off when the panel opens) via the standard
+        // error banner. RADIO_CONFIG_UPDATED's effect arrives separately
+        // as a config_event message, so it's ignored here.
+        if event.isConnectionLifecycle {
+            if event.isConnectionError {
                 errorMessage = event.message.isEmpty
-                    ? "Flex radio connection failed"
+                    ? "Radio connection failed"
                     : event.message
             }
             return
@@ -1183,24 +1196,46 @@ final class AmplifierViewModel {
         ws.sendRawCommand("tune_stop")
     }
 
-    /// Ask the Pi to open its Flex connection. Sent when the Sweep panel
-    /// appears so the radio is ready by the time the operator hits Start.
-    /// spe-remote opens the SmartSDR session on demand now (and closes it
-    /// when the cycle is over), so this is a head-start, not a hard
-    /// requirement — the Pi also connects lazily at tune start. WS-only;
-    /// a silent no-op in serial mode / while disconnected.
-    func flexConnect() {
+    /// Ask the Pi to open its radio connection. Sent when the Sweep panel
+    /// appears so the rig is ready by the time the operator hits Start.
+    /// spe-remote opens the rig session on demand now (and closes it when
+    /// the cycle is over), so this is a head-start, not a hard requirement
+    /// — the Pi also connects lazily at tune start. WS-only; a silent
+    /// no-op in serial mode / while disconnected.
+    func radioConnect() {
         guard let ws = connection as? WebSocketConnection, ws.isConnected else { return }
-        ws.sendRawCommand("flex_connect")
+        ws.sendRawCommand("radio_connect")
     }
 
-    /// Ask the Pi to drop its Flex connection — sent when the Sweep panel
+    /// Ask the Pi to drop its radio connection — sent when the Sweep panel
     /// closes while idle. Never fires mid-sweep (the Pi would ignore it
     /// anyway: the orchestrator owns the connection until the cycle ends).
-    func flexDisconnect() {
+    func radioDisconnect() {
         guard !isSweeping,
               let ws = connection as? WebSocketConnection, ws.isConnected else { return }
-        ws.sendRawCommand("flex_disconnect")
+        ws.sendRawCommand("radio_disconnect")
+    }
+
+    /// Request the current radio config from the Pi (reply arrives as a
+    /// `config_event:"radio"` message → `radioConfig`). Call when opening
+    /// the radio-settings sheet.
+    func refreshRadioConfig() {
+        guard let ws = connection as? WebSocketConnection, ws.isConnected else { return }
+        ws.sendRawCommand("get_config")
+    }
+
+    /// Switch / edit the active radio on the Pi. Applies live and persists
+    /// to config.yaml; refused while a tune is running. ``payload`` is the
+    /// `set_radio_config` body, e.g. `["kind": "tci", "tci": [...]]`.
+    func setRadioConfig(_ payload: [String: Any]) {
+        guard let ws = connection as? WebSocketConnection, ws.isConnected else {
+            errorMessage = "Radio config requires a WebSocket connection"
+            return
+        }
+        guard !isSweeping else { return }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        ws.sendRawCommand("set_radio_config:\(json)")
     }
 
     /// 1 Hz watchdog that flips `isAmpResponding` to false when no
