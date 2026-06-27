@@ -1139,19 +1139,25 @@ final class AmplifierViewModel {
         // Radio connection-lifecycle events (RADIO_CONNECTING / CONNECTED /
         // DISCONNECTED / ERROR / CONFIG_UPDATED — FLEX_* on an older
         // server) ride the same channel now that the Pi connects the rig
-        // on demand. They are not tune progress — keep them out of the
-        // sweep status so they don't clobber a finished sweep result or
-        // spin the status icon while idle. Surface only a connection
-        // *error* (e.g. radio off when the panel opens) via the standard
-        // error banner. RADIO_CONFIG_UPDATED's effect arrives separately
-        // as a config_event message, so it's ignored here.
+        // on demand. They are not tune *progress*, so they short-circuit
+        // before the sweep state machine below — but the Sweep sheet's
+        // status block reads `lastTuneEvent`, so we feed the connecting and
+        // error phases into it (otherwise the operator sees a misleading
+        // "Ready" while a connect fails behind the sheet, and the verbose
+        // error only lands in `errorMessage`, surfaced in ConnectionView
+        // hidden behind the sheet). CONNECTED resets the headline to idle;
+        // DISCONNECTED and CONFIG_UPDATED stay inert (the latter's effect
+        // arrives separately as a config_event).
         if event.isConnectionLifecycle {
-            if event.isConnectionError {
+            if event.isConnecting {
+                lastTuneEvent = event
+            } else if event.isConnectionError {
                 let banner = event.message.isEmpty
                     ? "Radio connection failed"
                     : event.message
                 errorMessage = banner
                 radioErrorBanner = banner
+                lastTuneEvent = event
             } else if event.isConnectionEstablished {
                 // Rig is back — clear the stale connection-error banner,
                 // following the existing "clear on positive state change"
@@ -1161,10 +1167,13 @@ final class AmplifierViewModel {
                     errorMessage = ""
                 }
                 radioErrorBanner = nil
+                // Drop the connecting/error headline so the sheet shows
+                // "Ready" on recovery instead of a stale red banner.
+                lastTuneEvent = nil
+                sweepProgress = nil
             }
-            // RADIO_* phases are connection housekeeping, not tune progress —
-            // short-circuit before `lastTuneEvent = event` so they never feed
-            // the sweep state machine below.
+            // DISCONNECTED can arrive as the Pi's post-cycle drop after a
+            // successful sweep — left inert so it can't clobber SWEEP_DONE.
             return
         }
 

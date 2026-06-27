@@ -56,6 +56,10 @@ struct TuneEvent: Decodable, Equatable {
     /// stale connection-error banner once the radio comes back.
     var isConnectionEstablished: Bool { phase == "RADIO_CONNECTED" || phase == "FLEX_CONNECTED" }
 
+    /// A connection *in-progress* phase — the Pi is dialing the rig. Shown
+    /// in the Sweep sheet so the operator sees progress, not a stale "Ready".
+    var isConnecting: Bool { phase == "RADIO_CONNECTING" || phase == "FLEX_CONNECTING" }
+
     /// SWEEP_STEP messages look like `"3/7: 14.1250 MHz"`. Extract the
     /// (current, total) integers for a progress bar; returns nil if the
     /// message doesn't match the format.
