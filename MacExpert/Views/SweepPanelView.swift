@@ -142,19 +142,24 @@ struct SweepPanelView: View {
 
     @ViewBuilder
     private var statusIcon: some View {
-        let phase = vm.lastTuneEvent?.phase ?? ""
-        switch phase {
-        case "SUCCESS", "SWEEP_DONE":
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        case "FAIL":
-            Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
-        case "ABORT":
-            Image(systemName: "stop.circle.fill").foregroundStyle(.orange)
-        case "":
-            Image(systemName: "circle.dashed").foregroundStyle(.secondary)
-        default:
-            // Running phase — animated indicator
-            ProgressView().controlSize(.small)
+        let event = vm.lastTuneEvent
+        if event?.isConnectionError == true {
+            // A connection problem, distinct from a tune FAIL's octagon.
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+        } else {
+            switch event?.phase ?? "" {
+            case "SUCCESS", "SWEEP_DONE":
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            case "FAIL":
+                Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+            case "ABORT":
+                Image(systemName: "stop.circle.fill").foregroundStyle(.orange)
+            case "":
+                Image(systemName: "circle.dashed").foregroundStyle(.secondary)
+            default:
+                // Running phase (incl. RADIO_CONNECTING) — animated indicator
+                ProgressView().controlSize(.small)
+            }
         }
     }
 
@@ -162,6 +167,8 @@ struct SweepPanelView: View {
         guard let event = vm.lastTuneEvent else {
             return vm.isSweeping ? "Starting…" : "Ready"
         }
+        if event.isConnecting       { return "Connecting to radio…" }
+        if event.isConnectionError  { return "Radio not reachable" }
         switch event.phase {
         case "SWEEP_DONE": return "Done"
         case "SUCCESS":    return "Cycle complete"
