@@ -12,6 +12,7 @@ Full two-way mirror of the amp's LCD: cursor tracking, every sub-menu, per-band 
 - **Dual transport** — USB serial (direct) or WebSocket (remote via `spe-remote` on Raspberry Pi). RCU LCD frames are proxied over WebSocket so live sub-menu mirroring works on both paths.
 - **Auto-detect** model from serial status (1.3K / 1.5K / 2K).
 - **Auto-reconnect** with exponential backoff.
+- **TLS + proxy login** — optional `wss://` (**Use TLS (wss)**) for spe-remote behind an authenticating reverse proxy, with the proxy's HTTP Basic login kept in the macOS Keychain. Credentials are only ever sent over TLS — never over plain `ws://`. See [Through the authenticating TLS proxy](#through-the-authenticating-tls-proxy).
 
 ### Live mirror (both directions, via RCU 0x6A LCD frames)
 | Screen | Mirroring |
@@ -53,7 +54,7 @@ Full two-way mirror of the amp's LCD: cursor tracking, every sub-menu, per-band 
 - **Fixed-height LCDContainer** — every sub-menu, standby banner, info screen, and alert banner is sized to match the power+gauges block, so the controls row below never moves as you navigate.
 - **Developer panels** — RCU Capture + RCU Parser Debug are hidden by default; toggle them on via the ladybug button in the title bar for diagnosing parser / pipeline issues.
 - **Apple Silicon + Intel** — universal binary (arm64 + x86_64) via `build-app.sh`.
-- **Persisted settings** — connection mode, host/port, dev-panels toggle all saved across launches.
+- **Persisted settings** — connection mode, host/port, Use TLS, dev-panels toggle all saved across launches (the proxy password lives in the Keychain, not in preferences).
 - **Reconnect on launch** — opt-out checkbox in the Connection panel. When on (default), the app restores the last `connectionMode` and auto-connects to the last server (serial port or WebSocket host) at startup. Designed for the daily-driver case where the Pi server is always running.
 - **Update check** — about 10 s after launch, then once a day while the app runs, asks GitHub whether a newer release exists (see [Updates](#updates)). **MacExpert → Check for Updates…** checks right away; **Check for updates automatically** next to it turns the daily check off.
 
@@ -168,6 +169,27 @@ procedure to add new fixtures from a fresh capture.
 3. Enter the Pi's IP and port (default `8888` — no comma).
 4. Click **Connect**. Status chips start updating within a second; RCU-driven sub-menus populate when you enter SETUP.
 
+### Through the authenticating TLS proxy
+
+When spe-remote sits behind a reverse proxy (e.g. Caddy on the Pi) that adds TLS and HTTP Basic auth, the URL changes from `ws://host:8888/ws` to `wss://host:8888/ws`:
+
+1. **Trust the proxy's CA.** Import the CA certificate (e.g. the private "Shack CA") into the **login** keychain in Keychain Access and set **Trust › Secure Sockets Layer (SSL)** to **Always Trust**. MacExpert relies on normal macOS trust — no pinning, no custom trust code, no ATS exceptions — so `wss://` works only once the system trusts the certificate. The certificate must name the host you type (an IP SAN for `192.168.86.43`, say).
+2. In the Connection panel (WebSocket mode) tick **Use TLS (wss)**. Plain `ws://` stays the default, so existing setups are unaffected.
+3. Under **Proxy login**, enter the username (default `operator`) and password and click **Save to Keychain**. It is stored as a generic password with service `ShackProxy` and account = the username (updated if one exists, else added); **Remove** deletes it. The indicator shows whether a login is stored; the stored password is never displayed. An item created beforehand works too:
+   ```bash
+   security add-generic-password -s ShackProxy -a operator -w   # prompts for the password
+   ```
+4. Click **Connect**. MacExpert reads the login from the Keychain on the first TLS connect (macOS may ask once whether MacExpert may use the `ShackProxy` item — **Always Allow** keeps it quiet), keeps it in memory for reconnects, and sends `Authorization: Basic …` on the WebSocket upgrade.
+
+**Credentials are never sent over plain `ws://` or `http://`.** The `Authorization` header is attached only when the scheme is `wss`/`https`; with **Use TLS** off the Keychain is not even read. MacExpert sends no `Origin` header, which the proxy's Origin check accepts.
+
+If the proxy refuses the upgrade, auto-reconnect stops and the Connection panel says why:
+- **Proxy login required** — no login is stored (HTTP 401, nothing sent). Save one under Proxy login, then Connect.
+- **Proxy login rejected** — the stored username/password was sent and refused (HTTP 401). Fix it, then Connect.
+- **Proxy login required — credentials are only sent over TLS** — a 401 over plain `ws://`; turn on Use TLS.
+- **Proxy refused the connection (HTTP 403)** — e.g. the proxy's Origin check.
+- **Proxy TLS certificate not trusted** — trust the CA as in step 1, then Connect.
+
 ### SETUP navigation
 
 - Click **SET** on the panel to enter SETUP (only allowed in STANDBY per amp firmware).
@@ -214,7 +236,10 @@ MacExpert/
 ├── Connection/
 │   ├── ConnectionProvider.swift    # Transport-agnostic protocol
 │   ├── SerialConnection.swift      # USB serial + RCU OFF/ON ticker
-│   └── WebSocketConnection.swift   # WS client; binary frames → RCU
+│   ├── WebSocketConnection.swift   # WS client; binary frames → RCU
+│   ├── ProxyAuth.swift             # ws/wss URL, Basic-auth header rule (TLS only),
+│   │                               # 401/403/untrusted-cert → ProxyError
+│   └── ProxyCredentialStore.swift  # Keychain "ShackProxy" login + in-memory cache
 ├── ViewModels/
 │   └── AmplifierViewModel.swift    # Observable state, frame handling,
 │                                   # sub-menu routing, info-screen watchdog

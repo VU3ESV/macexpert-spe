@@ -10,6 +10,23 @@ removed on 2026-06-28. v2.0.4 – v2.0.9 are not itemised here; see the
 
 ## [Unreleased]
 
+### Added
+- **Connect through an authenticating TLS proxy.** A **Use TLS (wss)** checkbox next to the
+  WebSocket host/port (persisted, default off) switches the URL to `wss://host:port/ws`, for
+  spe-remote behind Caddy with TLS from a private CA and HTTP Basic auth. TLS relies on normal
+  macOS trust (trust the CA in the login keychain) — no pinning, custom trust code or ATS
+  exceptions.
+- **Proxy login in the Keychain.** A **Proxy login** section (username, default `operator`;
+  password; **Save to Keychain** / **Remove**; stored / not-stored indicator) keeps the login as a
+  generic password, service `ShackProxy`, account = username. It is read at connect time, cached in
+  memory for reconnects, and checked for without decrypting first. The stored password is never
+  shown.
+- `Authorization: Basic …` is attached to the WebSocket upgrade **only over `wss`/`https`** —
+  never over plain `ws`/`http`, even when a login is stored. No `Origin` header is sent.
+- A refused upgrade stops auto-reconnect and shows why in the Connection panel: **Proxy login
+  required** (401, no login stored), **Proxy login rejected** (401, login sent), a 401 over plain
+  `ws://`, **HTTP 403**, or an untrusted TLS certificate. The panel re-opens to show the error.
+
 ## [2.0.12] — 2026-10-31
 Released 2026-10-31 as [v2.0.12](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.12):
 `MacExpert-2.0.12-macOS.{zip,dmg}` (universal, notarized + stapled), `MacExpert-2.0.12.radioplugin`
