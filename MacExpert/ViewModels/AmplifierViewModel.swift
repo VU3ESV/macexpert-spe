@@ -357,12 +357,37 @@ final class AmplifierViewModel {
     var wsPort: Int = 8888 {
         didSet { UserDefaults.standard.set(wsPort, forKey: "wsPort") }
     }
+    /// Connect with `wss://` (TLS) instead of `ws://` — for spe-remote
+    /// behind the authenticating Caddy proxy. Default off so existing
+    /// plain-`ws` setups are unaffected. Proxy credentials are only ever
+    /// sent when this is on.
+    var wsUseTLS: Bool = false {
+        didSet { UserDefaults.standard.set(wsUseTLS, forKey: "wsUseTLS") }
+    }
+
+    // MARK: - Proxy login (Keychain)
+
+    /// Whether a proxy login is stored in the Keychain — drives the
+    /// stored / not-stored indicator. Checked from attributes only, so it
+    /// never decrypts (or prompts for) the password.
+    enum ProxyLoginStatus: Equatable {
+        case unknown
+        case notStored
+        case stored(username: String)
+    }
+    var proxyLoginStatus: ProxyLoginStatus = .unknown
+    /// Result line for the last Save / Remove ("Saved to Keychain", or the
+    /// Keychain error). Never contains the password.
+    var proxyLoginMessage: String = ""
 
     // MARK: - Private
     private var connection: ConnectionProvider?
     private var portObserver: NSObjectProtocol?
+    /// Proxy login read from the Keychain at connect time, kept in memory.
+    private let proxyCredentials: ProxyCredentialCache
 
-    init() {
+    init(proxyCredentialStore: ProxyCredentialStore = KeychainProxyCredentialStore()) {
+        proxyCredentials = ProxyCredentialCache(store: proxyCredentialStore)
         loadSettings()
         refreshPorts()
         observePortChanges()
@@ -422,11 +447,25 @@ final class AmplifierViewModel {
                     try await serial.connect()
 
                 case .websocket:
-                    guard let url = URL(string: "ws://\(wsHost):\(wsPort)/ws") else {
+                    let useTLS = wsUseTLS
+                    guard let url = ProxyAuth.webSocketURL(host: wsHost, port: wsPort, useTLS: useTLS) else {
                         errorMessage = "Invalid WebSocket URL"
                         return
                     }
-                    let ws = WebSocketConnection(url: url)
+                    // Proxy login is read (and cached) only for wss — a
+                    // plain-ws user never touches the Keychain — and the
+                    // header rule below drops it on anything but wss/https.
+                    var credentials: ProxyCredentials?
+                    if useTLS {
+                        do {
+                            credentials = try await proxyCredentials.credentialsForConnect()
+                        } catch {
+                            errorMessage = "Couldn't read the proxy login — \(error.localizedDescription)"
+                            return
+                        }
+                    }
+                    let request = ProxyAuth.authorizedRequest(URLRequest(url: url), credentials: credentials)
+                    let ws = WebSocketConnection(request: request)
                     ws.onStateUpdate = { [weak self] state in
                         self?.handleStateUpdate(state)
                     }
@@ -458,6 +497,9 @@ final class AmplifierViewModel {
                     ws.onRadioConfig = { [weak self] cfg in
                         self?.radioConfig = cfg
                     }
+                    ws.onFatalError = { [weak self] error in
+                        self?.handleProxyError(error)
+                    }
                     connection = ws
                     try await ws.connect()
                     // Pull the current radio config so the picker reflects it.
@@ -470,6 +512,59 @@ final class AmplifierViewModel {
                 isConnected = false
             }
         }
+    }
+
+    /// A refused WebSocket upgrade (see `ProxyError`). The connection has
+    /// already stopped reconnecting; show why in the Connection panel.
+    private func handleProxyError(_ error: ProxyError) {
+        errorMessage = error.localizedDescription
+        if error == .loginRejected {
+            // Re-read the Keychain on the next Connect, in case the
+            // password was fixed there (or under Proxy login) meanwhile.
+            proxyCredentials.invalidate()
+        }
+    }
+
+    // MARK: - Proxy login (Keychain)
+
+    /// Refresh `proxyLoginStatus` from the Keychain item's attributes (no
+    /// decrypt, no prompt). Returns the stored username, if any.
+    @discardableResult
+    func refreshProxyLoginStatus() async -> String? {
+        do {
+            let username = try await proxyCredentials.storedUsername()
+            proxyLoginStatus = username.map { .stored(username: $0) } ?? .notStored
+            return username
+        } catch {
+            proxyLoginStatus = .unknown
+            proxyLoginMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// Save the proxy login to the Keychain (update, else add) and use it
+    /// from the next connect on.
+    func saveProxyLogin(username: String, password: String) async {
+        let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !username.isEmpty, !password.isEmpty else { return }
+        do {
+            try await proxyCredentials.save(ProxyCredentials(username: username, password: password))
+            proxyLoginMessage = "Saved to Keychain"
+        } catch {
+            proxyLoginMessage = error.localizedDescription
+        }
+        await refreshProxyLoginStatus()
+    }
+
+    /// Remove the stored proxy login from the Keychain and memory.
+    func removeProxyLogin() async {
+        do {
+            try await proxyCredentials.remove()
+            proxyLoginMessage = "Removed from Keychain"
+        } catch {
+            proxyLoginMessage = error.localizedDescription
+        }
+        await refreshProxyLoginStatus()
     }
 
     func disconnect() {
@@ -1408,6 +1503,8 @@ final class AmplifierViewModel {
         }
         let savedWSPort = UserDefaults.standard.integer(forKey: "wsPort")
         if savedWSPort > 0 { wsPort = savedWSPort }
+        // Missing key reads as false — the intended default (plain ws).
+        wsUseTLS = UserDefaults.standard.bool(forKey: "wsUseTLS")
 
         if let modeRaw = UserDefaults.standard.string(forKey: "connectionMode"),
            let mode = ConnectionMode(rawValue: modeRaw) {
