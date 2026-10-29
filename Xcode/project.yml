@@ -6,7 +6,7 @@
 # standalone app and Package.swift are untouched.
 #
 # The generated .xcodeproj is gitignored -- regenerate with:  (cd Xcode && xcodegen generate)
-# `scripts/make-radioplugin.sh` does this and packages the `.radioplugin`.
+# `./release.sh` does this and packages the signed/notarized `.radioplugin`.
 
 name: MacExpertPlugin
 options:
@@ -31,6 +31,7 @@ targets:
       - path: ../MacExpert
         excludes:
           - MacExpertApp.swift   # the standalone @main; the extension has its own entry
+          - UpdateChecker.swift  # the standalone app's GitHub release check; a plugin is updated with its .radioplugin
           - Resources            # asset catalog / icns (not referenced via Bundle.module)
     info:
       path: Extension/Info.plist
