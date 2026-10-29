@@ -121,11 +121,16 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.bareRepository GIT_CONFIG_VALUE_
 DERIVED="$(mktemp -d)"
 # CODE_SIGNING_ALLOWED=NO: we sign with our local identity below so
 # extension + app are notarized as a single unit.
+# MARKETING_VERSION / CURRENT_PROJECT_VERSION: the plugin reports the app's version
+# (Xcode/project.yml maps them into the extension's Info.plist).
 xcrun xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
     -destination 'platform=macOS' -derivedDataPath "$DERIVED" \
+    MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$VERSION" \
     CODE_SIGNING_ALLOWED=NO build >/tmp/macexpert-xcodebuild.log
 APPEX="$(/usr/bin/find "$DERIVED/Build/Products" -name "$APPEX_NAME" -maxdepth 3 | head -1)"
 [ -n "$APPEX" ] || { echo "ERROR: $APPEX_NAME not built; see /tmp/macexpert-xcodebuild.log" >&2; exit 1; }
+APPEX_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APPEX/Contents/Info.plist")"
+[ "$APPEX_VERSION" = "$VERSION" ] || { echo "ERROR: $APPEX_NAME reports version '$APPEX_VERSION', expected '$VERSION'" >&2; exit 1; }
 
 echo "==> Embedding $APPEX_NAME"
 mkdir -p "$APP/Contents/Extensions"
@@ -214,7 +219,9 @@ fi
 # radioplugin.sh used to do, now folded inline.
 echo "==> Building .radioplugin"
 STAGE="$(mktemp -d)"
-cp "$PKG_DIR/Xcode/Extension/plugin.json" "$STAGE/plugin.json"
+sed "s/__VERSION__/${VERSION}/g" "$PKG_DIR/Xcode/Extension/plugin.json" > "$STAGE/plugin.json"
+grep -q "\"version\": \"${VERSION}\"" "$STAGE/plugin.json" || {
+    echo "ERROR: plugin.json version not stamped (is the __VERSION__ placeholder intact?)" >&2; exit 1; }
 cp -R "$APP/Contents/Extensions/$APPEX_NAME" "$STAGE/"
 ( cd "$STAGE" && ditto -c -k --norsrc --noextattr . "$PLUGIN" )
 rm -rf "$STAGE"

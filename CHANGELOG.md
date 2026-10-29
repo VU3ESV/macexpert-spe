@@ -11,6 +11,11 @@ release in CI with the same script (patch bump of the fork's `v0.1.x` line). v2.
 ## [Unreleased]
 
 ### Fixed
+- **The Suite plugin reports the app's release version.** The `.radioplugin`'s `plugin.json` and
+  the embedded `.appex` both said 1.0 / 1.0.0 in every release, so the Amateur Radio Suite
+  couldn't tell a new plugin from an old one. `release.sh` now passes `VERSION` to xcodebuild
+  (`MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`, mapped in `Xcode/project.yml`) and stamps
+  `plugin.json`'s `__VERSION__`; it stops if either doesn't match.
 - **Proxy login: a pasted password no longer keeps its trailing line break.** Save now drops
   leading/trailing newlines and refuses other control characters. Before, a copy from a terminal
   stored a wrong password in the shared `ShackProxy` Keychain item and every app got
