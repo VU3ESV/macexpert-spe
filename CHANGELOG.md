@@ -11,6 +11,12 @@ release in CI with the same script (patch bump of the fork's `v0.1.x` line). v2.
 ## [Unreleased]
 
 ### Fixed
+- **The Suite plugin no longer flashes while it can't connect.** Each attempt reported
+  "connected" right after `resume()`, before the handshake, and retried every second because
+  `connect()` reset the backoff on every attempt. Now an attempt counts as connected only on the
+  server's first message, retries back off 1 → 2 → 4 → 8 → 16 s, and a plain `ws://` request
+  answered with HTTP 400 (a TLS port, e.g. the Caddy proxy) stops with "The server expects
+  TLS … turn on Use TLS (wss)" instead of retrying.
 - **Proxy login: a pasted password no longer keeps its trailing line break.** Save now drops
   leading/trailing newlines and refuses other control characters. Before, a copy from a terminal
   stored a wrong password in the shared `ShackProxy` Keychain item and every app got
