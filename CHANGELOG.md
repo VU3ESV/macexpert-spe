@@ -10,6 +10,12 @@ release in CI with the same script (patch bump of the fork's `v0.1.x` line). v2.
 
 ## [Unreleased]
 
+### Fixed
+- **Proxy login: a pasted password no longer keeps its trailing line break.** Save now drops
+  leading/trailing newlines and refuses other control characters. Before, a copy from a terminal
+  stored a wrong password in the shared `ShackProxy` Keychain item and every app got
+  "Proxy login rejected".
+
 ### Added
 - **Connect through an authenticating TLS proxy.** A **Use TLS (wss)** checkbox next to the
   WebSocket host/port (persisted, default off) switches the URL to `wss://host:port/ws`, for
