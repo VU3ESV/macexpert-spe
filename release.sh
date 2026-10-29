@@ -52,6 +52,17 @@ DO_PUSH=0
 DO_NOTARIZE=0
 NOTARY_PROFILE="${NOTARY_PROFILE:-MacExpert-Notary}"
 
+# stapler with a few retries: fetching the fresh ticket from Apple's
+# CloudKit can drop the connection ("The network connection was lost",
+# exit 68) or not see it yet (exit 65) after notarization is Accepted.
+staple() {
+    local n=1
+    until xcrun stapler staple "$1"; do
+        [ "$n" -ge 4 ] && return 1
+        echo "  stapler attempt $n failed — retrying in 20s…" >&2; sleep 20; n=$((n + 1))
+    done
+}
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --tag)      TAG="$2"; shift 2 ;;
@@ -156,7 +167,7 @@ if [ "$DO_NOTARIZE" = "1" ]; then
         exit 1
     fi
     echo "==> Stapling notarization ticket to .app"
-    xcrun stapler staple "$APP"
+    staple "$APP"
     xcrun stapler validate "$APP"
     spctl -a -t exec -vv "$APP" 2>&1 | head -3 || true
     # Re-zip so the published .zip carries the stapled ticket.
@@ -186,7 +197,7 @@ if [ "$DO_NOTARIZE" = "1" ]; then
         echo "ERROR: DMG notarization not accepted" >&2
         exit 1
     fi
-    xcrun stapler staple "$DMG"
+    staple "$DMG"
 fi
 
 # 8. Build the .radioplugin (Amateur Radio Suite installable: zip of
