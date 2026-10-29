@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build & test (macOS 14)
+    name: Build & test (macOS 15)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
