@@ -3,9 +3,9 @@
 All notable changes to **MacExpert** — a native macOS controller for SPE Expert amplifiers
 (serial / WebSocket RCU) that also ships as an
 [Amateur Radio Suite](https://github.com/VU3ESV/AmateurRadioSuite) plugin. Format follows
-[Keep a Changelog](https://keepachangelog.com/). Releases are cut locally with `release.sh`
-(tags `vX.Y.Z`); a push to `main` only runs CI — the automatic release on every merge was
-removed on 2026-06-28. v2.0.4 – v2.0.9 are not itemised here; see the
+[Keep a Changelog](https://keepachangelog.com/). Upstream releases are cut locally with `release.sh`
+(tags `vX.Y.Z`). In the VU3ESV fork, every PR merged into `main` cuts a signed, notarized
+release in CI with the same script (patch bump of the fork's `v0.1.x` line). v2.0.4 – v2.0.9 are not itemised here; see the
 [GitHub releases](https://github.com/vu2cpl/macexpert-spe/releases).
 
 ## [Unreleased]
@@ -26,6 +26,18 @@ removed on 2026-06-28. v2.0.4 – v2.0.9 are not itemised here; see the
 - A refused upgrade stops auto-reconnect and shows why in the Connection panel: **Proxy login
   required** (401, no login stored), **Proxy login rejected** (401, login sent), a 401 over plain
   `ws://`, **HTTP 403**, or an untrusted TLS certificate. The panel re-opens to show the error.
+
+### Changed
+- **Releases (VU3ESV fork): every PR merged into `main` cuts a release in CI.** The new
+  `.github/workflows/release.yml` bumps the patch of the latest `vX.Y.Z` tag and runs
+  `./release.sh --tag … --push --notarize` with the repo's Developer ID + notary secrets in a
+  temporary keychain, so CI artifacts are signed, notarized and stapled like a local release.
+  It triggers on push to `main` and releases only when the pushed commit belongs to a merged,
+  non-docs-only PR (direct pushes and `*.md`/`docs/**`/`LICENSE`-only PRs don't); *Run workflow*
+  releases on demand.
+- The update check now looks at **VU3ESV/macexpert-spe** releases (the fork's own line).
+- `release.sh`: notarytool honours `NOTARY_KEYCHAIN`, and stapling retries up to 4 times on
+  Apple CloudKit's transient errors (exit 65/68) instead of failing the release.
 
 ## [2.0.11] — 2026-10-09
 Released 2026-10-09 as [v2.0.11](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.11):

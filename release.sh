@@ -11,6 +11,11 @@
 # staple the .app and the .dmg, package the .radioplugin) entirely
 # against the local keychain.
 #
+# VU3ESV fork: .github/workflows/release.yml runs this same script in CI
+# for every merged PR. That repo does hold the Developer ID + notary
+# secrets; the workflow loads them into a temporary keychain and sets
+# NOTARY_KEYCHAIN, so CI output is signed and notarized like a local run.
+#
 # Usage:
 #   ./release.sh                                # build + sign + zip/dmg/plugin → dist/
 #   ./release.sh --notarize                     # also Apple-notarize + staple
@@ -51,6 +56,21 @@ TAG=""
 DO_PUSH=0
 DO_NOTARIZE=0
 NOTARY_PROFILE="${NOTARY_PROFILE:-MacExpert-Notary}"
+# The profile lives in the login keychain locally; CI stores it in a
+# temporary keychain and points NOTARY_KEYCHAIN at it.
+NOTARY_AUTH=(--keychain-profile "$NOTARY_PROFILE")
+[ -n "${NOTARY_KEYCHAIN:-}" ] && NOTARY_AUTH+=(--keychain "$NOTARY_KEYCHAIN")
+
+# stapler with a few retries: fetching the fresh ticket from Apple's
+# CloudKit can drop the connection ("The network connection was lost",
+# exit 68) or not see it yet (exit 65) after notarization is Accepted.
+staple() {
+    local n=1
+    until xcrun stapler staple "$1"; do
+        [ "$n" -ge 4 ] && return 1
+        echo "  stapler attempt $n failed — retrying in 20s…" >&2; sleep 20; n=$((n + 1))
+    done
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -142,7 +162,7 @@ echo "Built $ZIP ($(du -h "$ZIP" | cut -f1), $ARCHS)"
 if [ "$DO_NOTARIZE" = "1" ]; then
     echo "==> Notarizing app (~1-5 min)"
     if ! xcrun notarytool submit "$ZIP" \
-            --keychain-profile "$NOTARY_PROFILE" \
+            "${NOTARY_AUTH[@]}" \
             --wait 2>&1 | tee /tmp/macexpert-notary.log; then
         echo "ERROR: notarytool submit failed. See /tmp/macexpert-notary.log" >&2
         exit 1
@@ -151,12 +171,12 @@ if [ "$DO_NOTARIZE" = "1" ]; then
         echo "ERROR: notarization not accepted. Fetching log..." >&2
         SUB_ID="$(grep '  id:' /tmp/macexpert-notary.log | head -1 | awk '{print $2}')"
         if [ -n "$SUB_ID" ]; then
-            xcrun notarytool log "$SUB_ID" --keychain-profile "$NOTARY_PROFILE"
+            xcrun notarytool log "$SUB_ID" "${NOTARY_AUTH[@]}"
         fi
         exit 1
     fi
     echo "==> Stapling notarization ticket to .app"
-    xcrun stapler staple "$APP"
+    staple "$APP"
     xcrun stapler validate "$APP"
     spctl -a -t exec -vv "$APP" 2>&1 | head -3 || true
     # Re-zip so the published .zip carries the stapled ticket.
@@ -177,7 +197,7 @@ hdiutil create -volname "MacExpert" -srcfolder "$APP" -ov -format UDZO -fs HFS+ 
 codesign --force -s "$IDENTITY" --timestamp "$DMG"
 if [ "$DO_NOTARIZE" = "1" ]; then
     echo "==> Notarizing DMG (~1-5 min)"
-    if ! xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait | \
+    if ! xcrun notarytool submit "$DMG" "${NOTARY_AUTH[@]}" --wait | \
             tee /tmp/macexpert-notary-dmg.log; then
         echo "ERROR: DMG notarization submit failed" >&2
         exit 1
@@ -186,7 +206,7 @@ if [ "$DO_NOTARIZE" = "1" ]; then
         echo "ERROR: DMG notarization not accepted" >&2
         exit 1
     fi
-    xcrun stapler staple "$DMG"
+    staple "$DMG"
 fi
 
 # 8. Build the .radioplugin (Amateur Radio Suite installable: zip of

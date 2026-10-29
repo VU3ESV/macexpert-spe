@@ -1,0 +1,143 @@
+name: Release
+# VU3ESV fork release policy: every PR merged into main cuts a release,
+# the latest vX.Y.Z tag with its patch bumped, built, Developer-ID signed,
+# notarized and published by the same release.sh used for local releases.
+#
+# Upstream (vu2cpl) removed its CI release on 2026-06-28: that repo has no
+# signing secrets, so CI could only make ad-hoc builds whose embedded
+# extension won't register in the Amateur Radio Suite on other Macs. This
+# fork has the Developer ID + notary secrets, so CI signs like a local run.
+#
+# Trigger is a push to main, not `pull_request: closed`: a PR from a fork
+# gets a read-only GITHUB_TOKEN on pull_request events, so `gh release
+# create` fails with 403 (upstream #7). The gate keeps "only for a merged
+# PR" by looking up the PR the pushed commit belongs to: direct pushes and
+# docs-only PRs (*.md, docs/**, LICENSE) don't release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (vX.Y.Z). Empty = bump the latest tag's patch."
+        required: false
+
+permissions:
+  contents: write  # tag + GitHub release
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Decide whether to release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # The merged PR this push belongs to (merge, squash and rebase merges all list it).
+          pr="$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+                 -q '[.[] | select(.merged_at != null and .base.ref == "main")][0].number // empty')"
+          if [ -z "$pr" ]; then
+            echo "Direct push to main (no merged PR): CI only, no release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files="$(gh api --paginate "repos/${{ github.repository }}/pulls/$pr/files" -q '.[].filename')"
+          printf 'PR #%s changed:\n%s\n' "$pr" "$files"
+          skip=true
+          while IFS= read -r f; do
+            case "$f" in
+              *.md|docs/*|LICENSE) : ;;
+              *) skip=false; break ;;
+            esac
+          done <<< "$files"
+          [ "$skip" = true ] && echo "Docs-only PR: no release."
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: gate
+    if: needs.gate.outputs.skip != 'true'
+    name: Sign, notarize + publish
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # all tags, to find the latest version
+
+      - name: Use latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+
+      - name: Install xcodegen
+        run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+
+      - name: Resolve version
+        id: ver
+        env:
+          WANT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${WANT:-}" ]; then
+            next="$WANT"
+          else
+            # Strict vX.Y.Z only (ignores strays such as vv0.1.2).
+            latest="$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+            IFS=. read -r maj min pat <<< "${latest:-v0.0.0}"
+            next="${maj}.${min}.$((pat + 1))"
+          fi
+          [[ "$next" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::bad version '$next'"; exit 1; }
+          if git rev-parse -q --verify "refs/tags/$next" >/dev/null; then
+            echo "::error::tag $next already exists"; exit 1
+          fi
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+          echo "Releasing $next (previous: ${latest:-none})"
+
+      - name: Load Developer ID + notary credentials (temporary keychain)
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          P12_PASS: ${{ secrets.MACOS_CERT_PASSWORD }}
+          KC_PASS: ${{ secrets.KEYCHAIN_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          KC="$RUNNER_TEMP/release.keychain-db"
+          security create-keychain -p "$KC_PASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KC_PASS" "$KC"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$P12_PASS" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KC" >/dev/null
+          # release.sh finds the identity via the user search list (one arg per keychain).
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          # release.sh notarizes with --keychain-profile MacExpert-Notary (+ NOTARY_KEYCHAIN).
+          xcrun notarytool store-credentials MacExpert-Notary --keychain "$KC" \
+            --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD" >/dev/null
+          echo "NOTARY_KEYCHAIN=$KC" >> "$GITHUB_ENV"
+          security find-identity -v -p codesigning "$KC" | grep "Developer ID Application" | sed -E 's/^ *[0-9]+\) [0-9A-F]+ /identity: /'
+
+      - name: Build, sign, notarize + publish (release.sh)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          ./release.sh --tag "${{ steps.ver.outputs.tag }}" --push --notarize
+
+      - name: Remove the temporary keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true

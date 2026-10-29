@@ -5,7 +5,9 @@ import SwiftUI
 /// Suite plugin target excludes them (Xcode/project.yml).
 extension UpdateChecker.Configuration {
     static let app = UpdateChecker.Configuration(
-        repository: "vu2cpl/macexpert-spe", appName: "MacExpert")
+        // VU3ESV fork: check the fork's own releases (v0.1.x line, multi-radio,
+        // Developer ID Y6FT52BKDA), not upstream's v2.x.
+        repository: "VU3ESV/macexpert-spe", appName: "MacExpert")
 }
 
 @main
