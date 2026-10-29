@@ -90,6 +90,10 @@ enum ProxyAuth {
             return allowsCredentials(request.url) ? .loginRequired : .loginRequiresTLS
         }
         if status == 403 { return .forbidden }
+        // A plain ws:// upgrade answered with 400 is what a TLS listener (e.g.
+        // Caddy) says to an HTTP request: the server needs wss. Retrying the
+        // same plain request can never work.
+        if status == 400, !allowsCredentials(request.url) { return .serverExpectsTLS }
         if let code, untrustedCertificateCodes.contains(code) { return .certificateUntrusted }
         return nil
     }
@@ -119,6 +123,8 @@ enum ProxyError: LocalizedError, Equatable {
     case forbidden
     /// The proxy's certificate isn't trusted by the system.
     case certificateUntrusted
+    /// 400 to a plain ws:// upgrade: the port speaks TLS.
+    case serverExpectsTLS
 
     var errorDescription: String? {
         switch self {
@@ -132,6 +138,8 @@ enum ProxyError: LocalizedError, Equatable {
             "Proxy refused the connection (HTTP 403)."
         case .certificateUntrusted:
             "Proxy TLS certificate not trusted — trust the Shack CA in Keychain Access, then Connect."
+        case .serverExpectsTLS:
+            "The server expects TLS (it answered HTTP 400 to a plain ws:// connection). Turn on Use TLS (wss), then Connect."
         }
     }
 }

@@ -86,8 +86,15 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
 
     func connect() async throws {
         shouldReconnect = true
-        reconnectDelay = 1.0
+        reconnectDelay = 1.0          // a fresh, operator-started connection
+        try await open()
+    }
 
+    /// One connection attempt (also the reconnect path). It only counts as
+    /// connected once the server's first message arrives — spe-remote pushes
+    /// the amp state on open — so a refused upgrade never flashes
+    /// "connected", and an attempt can't reset the reconnect backoff.
+    private func open() async throws {
         let config = URLSessionConfiguration.default
         config.waitsForConnectivity = true
         // Proxy credentials come only from the request's Authorization
@@ -102,10 +109,6 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
 
         webSocketTask = ws
         ws.resume()
-
-        isConnected = true
-        onConnectionChange?(true)
-        reconnectDelay = 1.0
 
         startReceiving()
     }
@@ -168,11 +171,21 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
     }
 
     private func receiveLoop() async {
+        var established = false
         while !Task.isCancelled {
             guard let ws = webSocketTask else { break }
 
             do {
                 let message = try await ws.receive()
+                if !established {
+                    // First frame: the upgrade really succeeded.
+                    established = true
+                    await MainActor.run {
+                        isConnected = true
+                        reconnectDelay = 1.0
+                        onConnectionChange?(true)
+                    }
+                }
                 await handleMessage(message)
             } catch {
                 // A refused upgrade (401 / 403 / untrusted cert) won't
@@ -243,8 +256,11 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
 
     private func handleDisconnect() async {
         await MainActor.run {
+            // Only a connection that was up reports "disconnected"; a failed
+            // attempt changes nothing on screen (no once-a-second flicker).
+            let wasConnected = isConnected
             isConnected = false
-            onConnectionChange?(false)
+            if wasConnected { onConnectionChange?(false) }
         }
 
         guard shouldReconnect else { return }
@@ -259,7 +275,7 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
             }
 
             do {
-                try await connect()
+                try await open()          // not connect(): that would reset the backoff
             } catch {
                 print("Reconnect failed: \(error.localizedDescription)")
             }
