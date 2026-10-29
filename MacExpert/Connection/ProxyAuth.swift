@@ -37,6 +37,20 @@ enum ProxyAuth {
         return secureSchemes.contains(scheme)
     }
 
+    /// A password as typed or pasted into the Proxy login field, ready to
+    /// store: leading / trailing line breaks dropped (a copy from
+    /// `security … -w` or a terminal brings a trailing newline, which made
+    /// the stored login wrong for every app sharing the Keychain item).
+    /// Nil when what is left is empty or still contains a control character:
+    /// that is a paste accident, not a password. Spaces are kept.
+    static func normalizedPassword(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .newlines)
+        guard !trimmed.isEmpty,
+              !trimmed.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+        else { return nil }
+        return trimmed
+    }
+
     /// `Basic base64(username:password)`.
     static func basicAuthorizationValue(username: String, password: String) -> String {
         "Basic " + Data("\(username):\(password)".utf8).base64EncodedString()

@@ -21,6 +21,27 @@ final class ProxyAuthTests: XCTestCase {
 
     // MARK: - URL
 
+    // MARK: - Pasted passwords (a trailing newline broke the shared login on 2026-10-29)
+
+    func test_normalizedPassword_dropsTrailingNewlineFromAPaste() {
+        XCTAssertEqual(ProxyAuth.normalizedPassword("s3cret\n"), "s3cret")
+        XCTAssertEqual(ProxyAuth.normalizedPassword("s3cret\r\n"), "s3cret")
+        XCTAssertEqual(ProxyAuth.normalizedPassword("\ns3cret\n\n"), "s3cret")
+    }
+
+    func test_normalizedPassword_keepsSpacesAndPlainPasswords() {
+        XCTAssertEqual(ProxyAuth.normalizedPassword("s3cret"), "s3cret")
+        XCTAssertEqual(ProxyAuth.normalizedPassword(" pass phrase "), " pass phrase ")
+    }
+
+    func test_normalizedPassword_refusesControlCharactersAndEmpty() {
+        XCTAssertNil(ProxyAuth.normalizedPassword("first\nsecond"))   // two lines pasted
+        XCTAssertNil(ProxyAuth.normalizedPassword("tab\there"))
+        XCTAssertNil(ProxyAuth.normalizedPassword("\u{7F}x"))
+        XCTAssertNil(ProxyAuth.normalizedPassword("\n"))
+        XCTAssertNil(ProxyAuth.normalizedPassword(""))
+    }
+
     func test_webSocketURL_tlsOnIsWss() {
         XCTAssertEqual(ProxyAuth.webSocketURL(host: "192.168.86.43", port: 8888, useTLS: true)?.absoluteString,
                        "wss://192.168.86.43:8888/ws")

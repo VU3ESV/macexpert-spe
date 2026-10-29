@@ -547,6 +547,10 @@ final class AmplifierViewModel {
     func saveProxyLogin(username: String, password: String) async {
         let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !username.isEmpty, !password.isEmpty else { return }
+        guard let password = ProxyAuth.normalizedPassword(password) else {
+            proxyLoginMessage = "Not saved: the password contains a line break or control character. Paste just the password."
+            return
+        }
         do {
             try await proxyCredentials.save(ProxyCredentials(username: username, password: password))
             proxyLoginMessage = "Saved to Keychain"
