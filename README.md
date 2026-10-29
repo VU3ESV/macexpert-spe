@@ -112,7 +112,9 @@ It quits any running MacExpert first, `rsync --delete`s the bundle into `/Applic
 
 ### Cut a release (`release.sh`)
 
-Releases are cut locally — there is no GitHub Actions release workflow. `release.sh` builds the universal `.app` *with* the ExtensionKit plugin embedded, signs both inside-out with Developer ID + hardened runtime + secure timestamp, optionally notarizes and staples the `.app` and `.dmg`, and packages the `.radioplugin` (zip of `plugin.json` + the signed extension).
+**In this fork (VU3ESV), every PR merged into `main` cuts a release in CI**: `.github/workflows/release.yml` bumps the latest `vX.Y.Z` tag's patch and runs `./release.sh --tag … --push --notarize` with the repo's Developer ID + notary secrets loaded into a temporary keychain. Direct pushes and docs-only PRs (`*.md`, `docs/**`, `LICENSE`) don't release; *Actions ▸ Release ▸ Run workflow* releases on demand (optional version). Upstream releases are cut locally only, since its repo has no signing secrets.
+
+`release.sh` can also be run by hand. It builds the universal `.app` *with* the ExtensionKit plugin embedded, signs both inside-out with Developer ID + hardened runtime + secure timestamp, optionally notarizes and staples the `.app` and `.dmg`, and packages the `.radioplugin` (zip of `plugin.json` + the signed extension).
 
 ```bash
 ./release.sh                                  # build + sign → dist/{zip,dmg,radioplugin}
