@@ -55,6 +55,7 @@ Full two-way mirror of the amp's LCD: cursor tracking, every sub-menu, per-band 
 - **Apple Silicon + Intel** — universal binary (arm64 + x86_64) via `build-app.sh`.
 - **Persisted settings** — connection mode, host/port, dev-panels toggle all saved across launches.
 - **Reconnect on launch** — opt-out checkbox in the Connection panel. When on (default), the app restores the last `connectionMode` and auto-connects to the last server (serial port or WebSocket host) at startup. Designed for the daily-driver case where the Pi server is always running.
+- **Update check** — about 10 s after launch, then once a day while the app runs, asks GitHub whether a newer release exists (see [Updates](#updates)). **MacExpert → Check for Updates…** checks right away; **Check for updates automatically** next to it turns the daily check off.
 
 ## Requirements
 
@@ -70,7 +71,15 @@ Universal (arm64 + x86_64), Developer ID Application signed:
 
 [**Latest release →**](https://github.com/vu2cpl/macexpert-spe/releases/latest)
 
-Download `MacExpert-vX.Y.Z-universal.zip`, unzip, drag `MacExpert.app` to `/Applications`, double-click. The build is **Apple-notarized and stapled** so Gatekeeper accepts it on first launch with no warning.
+Download `MacExpert-X.Y.Z-macOS.zip` (or the `.dmg`), unzip, drag `MacExpert.app` to `/Applications`, double-click. Current release: [**v2.0.11**](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.11) (2026-10-09). Skip v2.0.10: its files contain a stale (June 2026) binary without the update check. Each release also carries `MacExpert-X.Y.Z.radioplugin` for the Amateur Radio Suite and a `SHA256SUMS` file. The build is **Apple-notarized and stapled** so Gatekeeper accepts it on first launch with no warning.
+
+### Updates
+
+About 10 seconds after launch, and then once a day for as long as it keeps running, MacExpert asks GitHub whether a newer release exists. If one does, it shows the new version and its release notes: **Download** opens the release page in your browser (nothing is downloaded or installed automatically), **Skip This Version** keeps the automatic check quiet about that release, **Remind Me Later** asks again at the next daily check. Only a successful check counts towards the day: one that fails (offline, timeout, rate limit, any other error) stays silent and is tried again about an hour later, or at the next launch. **MacExpert → Check for Updates…** checks right away; untick **MacExpert → Check for updates automatically** to turn the daily check off. The only request is an anonymous `GET https://api.github.com/repos/vu2cpl/macexpert-spe/releases/latest` — no account or token, nothing sent beyond the app's name and version in the User-Agent, and nothing to do with the amplifier connection. The Suite plugin (`.radioplugin`) does not include the check. (Since v2.0.11 — v2.0.10 was meant to carry it, but its files contain a stale June build.)
+
+When the update window appears on its own (the automatic check) it no longer takes the keyboard or brings MacExpert forward — whatever you are typing in keeps the keyboard — and none of its buttons is the default, so Return can never open the browser: **Download** needs a click, Esc is **Remind Me Later**. **Check for Updates…** still brings the window forward, also with no default button.
+
+A local `build-app.sh` build is stamped `0.0.0-dev` unless `VERSION` is set. A version containing "dev" never checks on its own — no request at launch or later — so dev builds stay quiet; **Check for Updates…** still works on them (and, comparing against `0.0.0-dev`, always offers the latest release).
 
 ### Build via `build-app.sh` (universal binary, signed if you have the cert)
 
@@ -81,7 +90,7 @@ cd macexpert-spe
 open ../MacExpert.app
 ```
 
-The script builds both arm64 and x86_64 targets and fuses them with `lipo`, assembles `MacExpert.app` one level up, copies resource bundles, and codesigns with the first available `Developer ID Application` identity in your keychain. If none is present it falls back to ad-hoc signing (works locally only). Verify with:
+The script builds arm64 and x86_64 in one SwiftPM invocation, asks SwiftPM where the product is (`--show-bin-path`; Swift 6.4 writes `.build/out/Products/Release`) after deleting the old one, and stops unless the fresh binary has both architectures, `minos 14.0`, the real macOS SDK recorded (it passes `-isysroot` to the linker), no `@rpath` dylibs and the update checker. It then assembles a fresh `MacExpert.app` one level up (byte-identical binary, app resource bundles, `Info.plist` with `VERSION`) and codesigns with the first available `Developer ID Application` identity in your keychain. If none is present it falls back to ad-hoc signing (works locally only). Verify with:
 
 ```bash
 lipo -archs ../MacExpert.app/Contents/MacOS/MacExpert
@@ -102,15 +111,17 @@ It quits any running MacExpert first, `rsync --delete`s the bundle into `/Applic
 
 ### Cut a release (`release.sh`)
 
+Releases are cut locally — there is no GitHub Actions release workflow. `release.sh` builds the universal `.app` *with* the ExtensionKit plugin embedded, signs both inside-out with Developer ID + hardened runtime + secure timestamp, optionally notarizes and staples the `.app` and `.dmg`, and packages the `.radioplugin` (zip of `plugin.json` + the signed extension).
+
 ```bash
-./release.sh                                  # build + sign + zip → dist/
+./release.sh                                  # build + sign → dist/{zip,dmg,radioplugin}
 ./release.sh --notarize                       # also Apple-notarize + staple
 ./release.sh --tag v2.1.0                     # also tag the current commit
-./release.sh --tag v2.1.0 --push              # tag, push, GitHub release + upload
+./release.sh --tag v2.1.0 --push              # tag, push, GitHub release + upload all artifacts
 ./release.sh --tag v2.1.0 --push --notarize   # full release flow
 ```
 
-`--push` requires the [GitHub CLI](https://cli.github.com/). `--notarize` requires a one-time keychain credential profile named `MacExpert-Notary`:
+`--push` publishes with GitHub's generated notes. For hand-written notes (as for v2.0.10), run `./release.sh --tag vX.Y.Z --notarize` (tags locally), `git push origin vX.Y.Z`, then `gh release create vX.Y.Z --notes-file … dist/MacExpert-X.Y.Z-macOS.{zip,dmg} dist/MacExpert-X.Y.Z.radioplugin dist/SHA256SUMS`, and download the assets back to check `SHA256SUMS`. The app `.zip` is made with `ditto --norsrc` (no AppleDouble `._*` entries). `--push` requires the [GitHub CLI](https://cli.github.com/). `--notarize` requires a one-time keychain credential profile named `MacExpert-Notary`:
 
 ```bash
 xcrun notarytool store-credentials "MacExpert-Notary" \
@@ -183,6 +194,7 @@ Based on the **SPE Application Programmer's Guide Rev 1.1** (15.10.2015) for the
 ```
 MacExpert/
 ├── MacExpertApp.swift              # App entry point
+├── UpdateChecker.swift             # GitHub release check (identical in all VU2CPL apps)
 ├── build-app.sh                    # Universal-binary build + .app assembly
 ├── install.sh                      # Install dev build into /Applications + relaunch
 ├── release.sh                      # Build, sign, notarize, zip, GitHub-release

@@ -13,8 +13,8 @@ concurrency:
 
 jobs:
   build:
-    name: Build & test (macOS 14)
-    runs-on: macos-14
+    name: Build & test (macOS 15)
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
 
@@ -34,12 +34,18 @@ jobs:
       - name: Test
         run: swift test
 
-      - name: Build plugin package (.appex / .radioplugin)
+      - name: Smoke-test extension build
+        # The release flow (release.sh, run locally) packages + signs +
+        # notarizes the .radioplugin. CI just confirms the extension
+        # still compiles so a broken project.yml / source incompatibility
+        # is caught at PR time rather than at release time.
         run: |
           # XcodeGen emits a recent project format; select the newest installed Xcode
           # so xcodebuild can read it (the runner default may be older).
           sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           xcodebuild -version
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
-          ./scripts/make-radioplugin.sh
-          ls -lh dist/MacExpert.radioplugin
+          ( cd Xcode && xcodegen generate )
+          xcodebuild -project Xcode/MacExpertPlugin.xcodeproj -scheme MacExpertExtension \
+            -configuration Release -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO build

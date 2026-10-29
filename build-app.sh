@@ -2,11 +2,18 @@
 # Build MacExpert.app as a universal (arm64 + x86_64) binary so it runs
 # natively on both Apple Silicon and Intel Macs without Rosetta.
 #
-# Builds each arch separately (Swift Package Manager doesn't do fat
-# binaries in a single invocation), then fuses them with `lipo`. The
-# resource bundles produced by SwiftPM for each arch are identical, so
-# we take them from the arm64 tree.
-set -e
+# Every run builds fresh and checks what it built (2026-10-09). This script
+# used to build each arch on its own and lipo
+# .build/{arm64,x86_64}-apple-macosx/release/MacExpert — paths Swift 6.4's
+# build system no longer writes (it writes .build/out/Products/Release). The
+# June 2026 binaries left there were what got lipo'd, so v2.0.10 shipped a
+# June build without the update check its notes describe. Now SwiftPM builds
+# both architectures in one invocation and is ASKED where the product is; the
+# old product is deleted first; and the script stops if the fresh binary is
+# missing, lacks an architecture, records the wrong deployment target or SDK,
+# needs an @rpath dylib, lacks the update checker, or is not byte-identical in
+# the .app.
+set -euo pipefail
 
 # Script lives inside the Swift Package directory; the .app bundle sits
 # one level up alongside it.
@@ -18,38 +25,71 @@ APP_DIR="$(dirname "$SCRIPT_DIR")/MacExpert.app"
 # passes the resolved release version; local builds default to a dev marker.
 VERSION="${VERSION:-0.0.0-dev}"
 BUNDLE_ID="com.vu2cpl.MacExpert"
+MIN_OS="14.0"   # = Package.swift .macOS(.v14) and LSMinimumSystemVersion below
+
+fail() { echo "ERROR: $*" >&2; exit 1; }
 
 cd "$PKG_DIR"
 
-echo "Building MacExpert (release, arm64)..."
-swift build -c release --arch arm64
+BUILD_ARGS=(-c release --arch arm64 --arch x86_64)
+BIN_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
+BUILT_BIN="$BIN_DIR/MacExpert"
+# Whatever is here after the build was produced by this run.
+rm -f "$BUILT_BIN"
+rm -rf "$BIN_DIR"/*.bundle
 
-echo "Building MacExpert (release, x86_64)..."
-swift build -c release --arch x86_64
+SDK="$(xcrun --sdk macosx --show-sdk-path)"
+SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
 
-ARM_BIN="$PKG_DIR/.build/arm64-apple-macosx/release/MacExpert"
-INTEL_BIN="$PKG_DIR/.build/x86_64-apple-macosx/release/MacExpert"
+echo "Building MacExpert (release, arm64 + x86_64, macOS SDK $SDK_VER) -> $BIN_DIR"
+# -isysroot for the link step: Swift 6.4's build system links through
+# `swiftc -sdk`, which hands clang only --sysroot, so ld records the
+# deployment target (14.0) as the SDK version and macOS applies old
+# linked-on-or-after behaviour. Pass the real SDK and check it below.
+swift build "${BUILD_ARGS[@]}" \
+    -Xswiftc -Xclang-linker -Xswiftc -isysroot -Xswiftc -Xclang-linker -Xswiftc "$SDK"
 
-if [ ! -x "$ARM_BIN" ] || [ ! -x "$INTEL_BIN" ]; then
-    echo "ERROR: one or both per-arch binaries missing." >&2
-    echo "  arm64:  $ARM_BIN" >&2
-    echo "  x86_64: $INTEL_BIN" >&2
-    exit 1
+[ -f "$BUILT_BIN" ] || fail "the build did not produce $BUILT_BIN"
+ARCHS=" $(lipo -archs "$BUILT_BIN") "
+for a in arm64 x86_64; do
+    case "$ARCHS" in *" $a "*) ;; *) fail "$BUILT_BIN lacks $a (has:${ARCHS})" ;; esac
+    BV="$(vtool -arch "$a" -show-build "$BUILT_BIN")"
+    minos="$(awk '$1=="minos"{print $2}' <<<"$BV")"
+    sdk="$(awk '$1=="sdk"{print $2}' <<<"$BV")"
+    [ "$minos" = "$MIN_OS" ] || fail "$a slice has minos $minos, expected $MIN_OS"
+    [ "$sdk" = "$SDK_VER" ] || fail "$a slice records sdk $sdk, expected $SDK_VER"
+done
+if otool -L "$BUILT_BIN" | /usr/bin/grep -q '@rpath/'; then
+    otool -L "$BUILT_BIN" | /usr/bin/grep '@rpath/'
+    fail "the binary needs @rpath dylibs this bundle does not carry"
 fi
+# The standalone app has the GitHub release check (MacExpert/UpdateChecker.swift);
+# a binary without its request URL is not a build of this source.
+# (A count, not grep -q: under pipefail an early grep exit SIGPIPEs strings.)
+CHECKER="$(strings -a "$BUILT_BIN" | /usr/bin/grep -c 'api.github.com/repos/' || true)"
+[ "${CHECKER:-0}" -gt 0 ] \
+    || fail "$BUILT_BIN has no update checker — not a build of the current source"
+echo "Built $(stat -f '%Sm' "$BUILT_BIN"); archs:${ARCHS}minos $MIN_OS, sdk $SDK_VER"
 
-echo "Assembling MacExpert.app..."
+echo "Assembling MacExpert.app (fresh)..."
+rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
-lipo -create -output "$APP_DIR/Contents/MacOS/MacExpert" "$ARM_BIN" "$INTEL_BIN"
+cp "$BUILT_BIN" "$APP_DIR/Contents/MacOS/MacExpert"
+cmp -s "$BUILT_BIN" "$APP_DIR/Contents/MacOS/MacExpert" \
+    || fail "the binary in $APP_DIR is not the one just built"
 echo "Universal binary: $(lipo -archs "$APP_DIR/Contents/MacOS/MacExpert")"
 
 cp "$PKG_DIR/MacExpert/Resources/ExpertIcon.icns" "$APP_DIR/Contents/Resources/ExpertIcon.icns"
 
-# Copy Swift resource bundles (take the arm64 set; they're architecture-
-# independent so the other arch's copies would be identical).
-for bundle in "$PKG_DIR/.build/arm64-apple-macosx/release/"*.bundle; do
+# SwiftPM resource bundles from this build (architecture-independent). The
+# bin path also holds the test target's bundle (fixtures) — not shipped.
+for bundle in "$BIN_DIR/"*.bundle; do
+    case "$(basename "$bundle")" in *Tests.bundle) continue ;; esac
     [ -d "$bundle" ] && cp -R "$bundle" "$APP_DIR/Contents/Resources/"
 done
+[ -d "$APP_DIR/Contents/Resources/MacExpert_MacExpert.bundle" ] \
+    || fail "MacExpert_MacExpert.bundle missing from the build"
 
 # Info.plist — without this the bundle has no identity: it won't launch cleanly and (once an
 # ExtensionKit .appex is embedded) the extension won't register with macOS / the Suite.
@@ -87,16 +127,19 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_DIR/Contents/Info.plist")" = "$VERSION" ] \
+    || fail "Info.plist does not carry version $VERSION"
 
 # Codesign with the Developer ID Application identity if one is available. SIGN_IDENTITY env
 # var overrides; otherwise we pick the first Developer ID Application identity from the
 # keychain. Hardened runtime is enabled so the app meets Gatekeeper / notarization
 # requirements. If no identity is present, fall back to ad-hoc signing.
 #
-# package-signed.sh sets SKIP_SIGN=1: it embeds the ExtensionKit .appex and then signs the
-# whole bundle inside-out (with entitlements) + notarizes, so signing here would be redundant
-# and would only double-expose the build to Apple's flaky timestamp service. The standalone
-# release.sh path leaves SKIP_SIGN unset, so it still gets a signed app from this script.
+# release.sh sets SKIP_SIGN=1: it embeds the ExtensionKit .appex and then signs the whole
+# bundle inside-out (with entitlements) + notarizes, so signing here would be redundant and
+# would only double-expose the build to Apple's flaky timestamp service. Direct invocations
+# (./build-app.sh from the command line, install.sh, etc.) leave SKIP_SIGN unset and get a
+# signed standalone app from this step.
 if [ "${SKIP_SIGN:-0}" != "1" ]; then
     if [ -z "${SIGN_IDENTITY:-}" ]; then
         SIGN_IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null \
