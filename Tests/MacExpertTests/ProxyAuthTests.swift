@@ -155,6 +155,19 @@ final class ProxyAuthTests: XCTestCase {
                        .forbidden)
     }
 
+    func test_400_toPlainWs_isServerExpectsTLS() {
+        // Caddy's TLS port answers a plain HTTP upgrade with 400; retrying can't help.
+        let sent = request("ws://192.168.86.43:9888/ws")
+        XCTAssertEqual(ProxyAuth.classifyHandshakeFailure(
+            response: http(400, "http://192.168.86.43:9888/ws"), error: URLError(.badServerResponse), request: sent),
+                       .serverExpectsTLS)
+    }
+
+    func test_400_overWss_isNotFatal() {
+        XCTAssertNil(ProxyAuth.classifyHandshakeFailure(
+            response: http(400), error: URLError(.badServerResponse), request: request("wss://192.168.86.43:8888/ws")))
+    }
+
     func test_untrustedCertificate_isReported() {
         XCTAssertEqual(ProxyAuth.classifyHandshakeFailure(
             response: nil, error: URLError(.serverCertificateUntrusted),
