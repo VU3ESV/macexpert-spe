@@ -18,7 +18,7 @@ three reports:
      for two labels. Highlights every changed offset.
 
 Usage:
-    python3 analyze_captures.py ~/Documents/MacExpert-captures/capture-*.log
+    python3 analyze_captures.py ~/Documents/Tech/MacExpert-captures/capture-*.log
     python3 analyze_captures.py capture.log --diff LOGO OP_14MHz_Ant1
 """
 

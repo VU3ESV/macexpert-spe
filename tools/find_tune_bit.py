@@ -34,7 +34,7 @@ set — exactly the comparison we want.
 
 Then run:
 
-    python3 find_tune_bit.py "$(ls -t ~/Documents/MacExpert-captures/capture-*[0-9].log | head -1)" \
+    python3 find_tune_bit.py "$(ls -t ~/Documents/Tech/MacExpert-captures/capture-*[0-9].log | head -1)" \
         --running led_on --idle led_off
 
 The script prints the byte offsets that *most reliably* distinguish

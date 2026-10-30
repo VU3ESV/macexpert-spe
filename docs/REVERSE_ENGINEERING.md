@@ -53,7 +53,7 @@ For a status flag we know exists in firmware (front-panel TUNE LED, alarm state,
 
 1. Open MacExpert → Capture. Amp in STBY, idle. Capture ~15 s under label `led_off`.
 2. Press TUNE on the amp's front panel. Quickly switch label to `led_on` and capture every frame you can during the ~5 s LED window.
-3. Run `python3 tools/find_tune_bit.py "$(ls -t ~/Documents/MacExpert-captures/capture-*[0-9].log | head -1)" --running led_on --idle led_off`. The script ranks every byte offset by mode-stability and discrimination strength, with a hard preference for single-bit flips (the typical shape of a flag register written by firmware).
+3. Run `python3 tools/find_tune_bit.py "$(ls -t ~/Documents/Tech/MacExpert-captures/capture-*[0-9].log | head -1)" --running led_on --idle led_off`. The script ranks every byte offset by mode-stability and discrimination strength, with a hard preference for single-bit flips (the typical shape of a flag register written by firmware).
 4. The top-strength entry (≥ 0.9, single bit) gets flagged `** tune-flag candidate`. Cross-check it against the known offset map in this doc, then plumb it into `RCUFrame` as a new accessor (e.g. `isTuneInProgress`).
 
 The same machinery generalises — relabel captures and use `--running` / `--idle` to hunt any binary state (alarm vs no-alarm, ATU bypass vs ATU active). The key invariant is *same LCD screen in both labels*; otherwise the script just rediscovers the screen-classifier bytes instead of the flag.

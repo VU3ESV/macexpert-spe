@@ -10,6 +10,11 @@ removed on 2026-06-28. v2.0.4 – v2.0.9 are not itemised here; see the
 
 ## [Unreleased]
 
+### Changed
+- RCU captures are now written to `~/Documents/Tech/MacExpert-captures/` (was `~/Documents/MacExpert-captures/`),
+  following the Documents folder reorganisation of 2026-10-30. Existing captures were moved there; the tools and
+  the fixture / reverse-engineering docs use the new path.
+
 ## [2.0.11] — 2026-10-09
 Released 2026-10-09 as [v2.0.11](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.11):
 `MacExpert-2.0.11-macOS.{zip,dmg}` (universal, notarized + stapled, `sdk 27.0`),

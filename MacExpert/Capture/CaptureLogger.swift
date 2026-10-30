@@ -5,7 +5,7 @@ import Observation
 ///
 /// Lifecycle:
 ///   start(label:) → opens a fresh capture-YYYYMMDD-HHMMSS.log under
-///   ~/Documents/MacExpert-captures/, writes a header, returns the URL.
+///   ~/Documents/Tech/MacExpert-captures/, writes a header, returns the URL.
 ///   append(packet:) writes one line per packet using the current label.
 ///   setLabel(_:) updates the label without touching the file.
 ///   stop() flushes and closes.
@@ -146,7 +146,7 @@ final class CaptureLogger {
             appropriateFor: nil,
             create: true
         )
-        let dir = docs.appendingPathComponent("MacExpert-captures", isDirectory: true)
+        let dir = docs.appendingPathComponent("Tech/MacExpert-captures", isDirectory: true)
         if !FileManager.default.fileExists(atPath: dir.path) {
             try FileManager.default.createDirectory(
                 at: dir,

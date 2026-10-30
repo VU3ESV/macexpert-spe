@@ -35,13 +35,13 @@ moving target — fixtures pin it down.
 4. Navigate the amp panel to the screen you want captured. Hold steady
    for ~2 seconds.
 5. Click **Stop**. The capture is written to
-   `~/Documents/MacExpert-captures/capture-YYYYMMDD-HHMMSS.log`.
+   `~/Documents/Tech/MacExpert-captures/capture-YYYYMMDD-HHMMSS.log`.
 6. Extract the first capture line's hex bytes to a `.bin` file:
 
    ```bash
    python3 - << 'EOF'
    import sys
-   src = "/Users/manoj/Documents/MacExpert-captures/capture-YYYYMMDD-HHMMSS.log"
+   src = "/Users/manoj/Documents/Tech/MacExpert-captures/capture-YYYYMMDD-HHMMSS.log"
    out = "Tests/MacExpertTests/Fixtures/<descriptive_name>.bin"
    with open(src) as f:
        for line in f:
