@@ -25,7 +25,11 @@ removed on 2026-06-28. v2.0.4 – v2.0.9 are not itemised here; see the
   never over plain `ws`/`http`, even when a login is stored. No `Origin` header is sent.
 - A refused upgrade stops auto-reconnect and shows why in the Connection panel: **Proxy login
   required** (401, no login stored), **Proxy login rejected** (401, login sent), a 401 over plain
-  `ws://`, **HTTP 403**, or an untrusted TLS certificate. The panel re-opens to show the error.
+  `ws://`, **HTTP 403**, an untrusted TLS certificate, or a TLS handshake that fails with **Use TLS**
+  on (`-1200`, usually a port that speaks plain HTTP; only when this connection never worked, so a
+  proxy restart mid-session still reconnects). The panel re-opens to show the error.
+- The Proxy login section says the login is **shared**: the LP-100A / LP-700 apps on the same Mac
+  read the same `ShackProxy` item, so **Save** and **Remove** change it for them too.
 
 ## [2.0.12] — 2026-10-31
 Released 2026-10-31 as [v2.0.12](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.12):

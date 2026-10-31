@@ -91,6 +91,12 @@ enum ProxyAuth {
         }
         if status == 403 { return .forbidden }
         if let code, untrustedCertificateCodes.contains(code) { return .certificateUntrusted }
+        // TLS handshake failed outright (-1200). With Use TLS on, the usual
+        // cause is a port that speaks plain HTTP (spe-remote without the
+        // proxy), and retrying the same handshake can't fix that.
+        if code == NSURLErrorSecureConnectionFailed, allowsCredentials(request.url) {
+            return .tlsHandshakeFailed
+        }
         return nil
     }
 
@@ -119,6 +125,9 @@ enum ProxyError: LocalizedError, Equatable {
     case forbidden
     /// The proxy's certificate isn't trusted by the system.
     case certificateUntrusted
+    /// `wss://` handshake failed (NSURLErrorSecureConnectionFailed, -1200),
+    /// typically because the port doesn't speak TLS.
+    case tlsHandshakeFailed
 
     var errorDescription: String? {
         switch self {
@@ -132,6 +141,8 @@ enum ProxyError: LocalizedError, Equatable {
             "Proxy refused the connection (HTTP 403)."
         case .certificateUntrusted:
             "Proxy TLS certificate not trusted — trust the Shack CA in Keychain Access, then Connect."
+        case .tlsHandshakeFailed:
+            "Secure connection failed — the server may not use TLS on this port. Turn off Use TLS (wss) or check the port, then Connect."
         }
     }
 }

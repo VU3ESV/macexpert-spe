@@ -51,8 +51,9 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
     /// `set_radio_config`. Drives the radio-settings picker.
     var onRadioConfig: ((RadioConfig) -> Void)?
     /// Fired when the WebSocket upgrade is refused in a way retrying won't
-    /// fix — proxy login required / rejected (401), forbidden (403), or an
-    /// untrusted TLS certificate. Auto-reconnect is stopped first, so a bad
+    /// fix — proxy login required / rejected (401), forbidden (403), an
+    /// untrusted TLS certificate, or a failed TLS handshake over `wss`.
+    /// Auto-reconnect is stopped first, so a bad
     /// password can't tight-loop against the proxy.
     var onFatalError: ((ProxyError) -> Void)?
 
@@ -65,6 +66,11 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
     private var reconnectTask: Task<Void, Never>?
     private var shouldReconnect = false
     private var reconnectDelay: TimeInterval = 1.0
+    /// A message has arrived at least once on this connection object (the
+    /// view model makes a new one per Connect). A TLS-handshake failure
+    /// after that is likely transient (proxy restart, link drop mid-
+    /// handshake), so it keeps reconnecting instead of stopping.
+    private var hasEverReceived = false
     private let maxReconnectDelay: TimeInterval = 16.0
 
     init(url: URL) {
@@ -173,12 +179,15 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
 
             do {
                 let message = try await ws.receive()
+                hasEverReceived = true
                 await handleMessage(message)
             } catch {
-                // A refused upgrade (401 / 403 / untrusted cert) won't
-                // fix itself: stop reconnecting and report it instead.
+                // A refused upgrade (401 / 403 / untrusted cert, or a TLS
+                // handshake that never worked) won't fix itself: stop
+                // reconnecting and report it instead.
                 if let fatal = ProxyAuth.classifyHandshakeFailure(
-                    response: ws.response, error: error, request: request) {
+                    response: ws.response, error: error, request: request),
+                   !(fatal == .tlsHandshakeFailed && hasEverReceived) {
                     shouldReconnect = false
                     onFatalError?(fatal)
                 }

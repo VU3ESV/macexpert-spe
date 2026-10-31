@@ -147,6 +147,12 @@ private struct ProxyLoginSection: View {
                 Spacer()
                 statusLabel
             }
+            // One Keychain item ("ShackProxy") serves every shack app that
+            // logs in through the proxy, so say so before Remove surprises.
+            Text("Shared login: the LP-100A and LP-700 apps on this Mac use it too, so Save and Remove change it for them as well.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Text("User").font(.system(size: 12)).foregroundStyle(.secondary).frame(width: 40, alignment: .leading)
                 TextField("operator", text: $username)
@@ -175,6 +181,7 @@ private struct ProxyLoginSection: View {
                 }
                 .controlSize(.small)
                 .disabled(isBusy || !isStored)
+                .help("Removes the shared ShackProxy login from the Keychain. The LP-100A and LP-700 apps lose it too.")
                 Button("Save to Keychain", action: save)
                     .controlSize(.small)
                     .disabled(isBusy || password.isEmpty

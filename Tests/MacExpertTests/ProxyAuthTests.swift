@@ -162,6 +162,21 @@ final class ProxyAuthTests: XCTestCase {
                        .certificateUntrusted)
     }
 
+    func test_tlsHandshakeFailure_overWss_isReported() {
+        // Use TLS on against a port that answers plain HTTP.
+        XCTAssertEqual(ProxyAuth.classifyHandshakeFailure(
+            response: nil, error: URLError(.secureConnectionFailed),
+            request: request("wss://192.168.86.43:8888/ws")),
+                       .tlsHandshakeFailed)
+    }
+
+    func test_tlsHandshakeFailure_overPlainWs_isNotClassified() {
+        // No TLS was attempted, so -1200 can't be a TLS-mismatch hint here.
+        XCTAssertNil(ProxyAuth.classifyHandshakeFailure(
+            response: nil, error: URLError(.secureConnectionFailed),
+            request: request("ws://192.168.86.43:8888/ws")))
+    }
+
     func test_transientFailures_areNotFatal() {
         let sent = request("wss://192.168.86.43:8888/ws")
         // Proxy up, spe-remote down — keep reconnecting.
@@ -179,6 +194,7 @@ final class ProxyAuthTests: XCTestCase {
         XCTAssertTrue(ProxyError.loginRequired.localizedDescription.hasPrefix("Proxy login required"))
         XCTAssertTrue(ProxyError.loginRejected.localizedDescription.hasPrefix("Proxy login rejected"))
         XCTAssertTrue(ProxyError.loginRequiresTLS.localizedDescription.contains("Use TLS (wss)"))
+        XCTAssertTrue(ProxyError.tlsHandshakeFailed.localizedDescription.contains("Turn off Use TLS (wss)"))
     }
 }
 

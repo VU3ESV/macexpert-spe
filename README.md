@@ -175,7 +175,7 @@ When spe-remote sits behind a reverse proxy (e.g. Caddy on the Pi) that adds TLS
 
 1. **Trust the proxy's CA.** Import the CA certificate (e.g. the private "Shack CA") into the **login** keychain in Keychain Access and set **Trust › Secure Sockets Layer (SSL)** to **Always Trust**. MacExpert relies on normal macOS trust — no pinning, no custom trust code, no ATS exceptions — so `wss://` works only once the system trusts the certificate. The certificate must name the host you type (an IP SAN for `192.168.86.43`, say).
 2. In the Connection panel (WebSocket mode) tick **Use TLS (wss)**. Plain `ws://` stays the default, so existing setups are unaffected.
-3. Under **Proxy login**, enter the username (default `operator`) and password and click **Save to Keychain**. It is stored as a generic password with service `ShackProxy` and account = the username (updated if one exists, else added); **Remove** deletes it. The indicator shows whether a login is stored; the stored password is never displayed. An item created beforehand works too:
+3. Under **Proxy login**, enter the username (default `operator`) and password and click **Save to Keychain**. It is stored as a generic password with service `ShackProxy` and account = the username (updated if one exists, else added); **Remove** deletes it. The login is **shared**: the LP-100A and LP-700 apps on the same Mac use the same `ShackProxy` item, so Save and Remove change it for them too. The indicator shows whether a login is stored; the stored password is never displayed. An item created beforehand works too:
    ```bash
    security add-generic-password -s ShackProxy -a operator -w   # prompts for the password
    ```
@@ -189,6 +189,7 @@ If the proxy refuses the upgrade, auto-reconnect stops and the Connection panel 
 - **Proxy login required — credentials are only sent over TLS** — a 401 over plain `ws://`; turn on Use TLS.
 - **Proxy refused the connection (HTTP 403)** — e.g. the proxy's Origin check.
 - **Proxy TLS certificate not trusted** — trust the CA as in step 1, then Connect.
+- **Secure connection failed** — with Use TLS on, the TLS handshake failed (`-1200`); usually the port speaks plain HTTP (spe-remote without the proxy). Turn off Use TLS or check the port.
 
 ### SETUP navigation
 
@@ -238,7 +239,7 @@ MacExpert/
 │   ├── SerialConnection.swift      # USB serial + RCU OFF/ON ticker
 │   ├── WebSocketConnection.swift   # WS client; binary frames → RCU
 │   ├── ProxyAuth.swift             # ws/wss URL, Basic-auth header rule (TLS only),
-│   │                               # 401/403/untrusted-cert → ProxyError
+│   │                               # 401/403/untrusted-cert/-1200 → ProxyError
 │   └── ProxyCredentialStore.swift  # Keychain "ShackProxy" login + in-memory cache
 ├── ViewModels/
 │   └── AmplifierViewModel.swift    # Observable state, frame handling,
