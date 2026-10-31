@@ -46,6 +46,10 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
     /// button state. The Pi broadcasts these as JSON keyed on
     /// `tune_event`; see Models/TuneEvent.swift for the shape.
     var onTuneEvent: ((TuneEvent) -> Void)?
+    /// Fired when spe-remote sends a radio-config snapshot
+    /// (`config_event:"radio"`) — in reply to `get_config` or after a
+    /// `set_radio_config`. Drives the radio-settings picker.
+    var onRadioConfig: ((RadioConfig) -> Void)?
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var session: URLSession?
@@ -181,6 +185,15 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
             // d3be36f closed for power_result messages.
             if let ev = try? decoder.decode(TuneEvent.self, from: data) {
                 await MainActor.run { onTuneEvent?(ev) }
+                return
+            }
+            // Radio-config snapshot — decode BEFORE state for the same
+            // reason as tune_event: it carries its own discriminator
+            // (`config_event`) and would otherwise be swallowed by the
+            // permissive AmplifierState decode.
+            if let cfg = try? decoder.decode(RadioConfigMessage.self, from: data),
+               cfg.configEvent == "radio" {
+                await MainActor.run { onRadioConfig?(cfg.radio) }
                 return
             }
             if let state = try? decoder.decode(AmplifierState.self, from: data) {
