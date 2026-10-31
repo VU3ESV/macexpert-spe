@@ -48,8 +48,9 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
     var onTuneEvent: ((TuneEvent) -> Void)?
     /// Fired when spe-remote sends a radio-config snapshot
     /// (`config_event:"radio"`) — in reply to `get_config` or after a
-    /// `set_radio_config`. Drives the radio-settings picker.
-    var onRadioConfig: ((RadioConfig) -> Void)?
+    /// `set_radio_config`. Drives the radio-settings picker. The second
+    /// value is the message's `persisted` flag (nil from older servers).
+    var onRadioConfig: ((RadioConfig, Bool?) -> Void)?
     /// Fired when the WebSocket upgrade is refused in a way retrying won't
     /// fix — proxy login required / rejected (401), forbidden (403), an
     /// untrusted TLS certificate, or a failed TLS handshake over `wss`.
@@ -247,7 +248,7 @@ final class WebSocketConnection: NSObject, ConnectionProvider, @unchecked Sendab
             // permissive AmplifierState decode.
             if let cfg = try? decoder.decode(RadioConfigMessage.self, from: data),
                cfg.configEvent == "radio" {
-                await MainActor.run { onRadioConfig?(cfg.radio) }
+                await MainActor.run { onRadioConfig?(cfg.radio, cfg.persisted) }
                 return
             }
             if let state = try? decoder.decode(AmplifierState.self, from: data) {

@@ -28,15 +28,22 @@ struct RadioConfig: Decodable, Equatable {
     }
 }
 
-/// Envelope spe-remote wraps the config in: `{"config_event":"radio","radio":{…}}`.
+/// Envelope spe-remote wraps the config in:
+/// `{"config_event":"radio","persisted":true,"radio":{…}}`.
 /// Decoded ahead of AmplifierState in the WS message router so the radio
 /// snapshot isn't mistaken for a (mostly-defaulted) state frame.
 struct RadioConfigMessage: Decodable {
     let configEvent: String
     let radio: RadioConfig
+    /// False when the Pi applied a `set_radio_config` live but couldn't
+    /// write config.yaml, so the change reverts on restart. Absent from
+    /// older servers. A `get_config` reply always says true, so only the
+    /// broadcast right before `RADIO_CONFIG_UPDATED` is meaningful.
+    let persisted: Bool?
 
     enum CodingKeys: String, CodingKey {
         case configEvent = "config_event"
         case radio
+        case persisted
     }
 }

@@ -50,8 +50,18 @@ final class AmplifierViewModel {
     /// Latest radio config from the Pi (`config_event:"radio"`). Drives
     /// the radio-settings picker so the operator can choose Flex vs SunSDR
     /// and edit the active rig's host/port. Nil until the first
-    /// `get_config` reply.
+    /// `get_config` reply, and reset to nil when a new WebSocket
+    /// connection starts, so a previous server's config never stands in.
     var radioConfig: RadioConfig?
+    /// True after a radio change the Pi applied live but couldn't save to
+    /// config.yaml (`persisted:false`), so it reverts when spe-remote
+    /// restarts. Updated on each `RADIO_CONFIG_UPDATED` from the config
+    /// broadcast just before it, and cleared on a new connection.
+    var radioChangeNotSaved = false
+    /// `persisted` from the latest config broadcast. A `get_config` reply
+    /// always says true, so it is only acted on at `RADIO_CONFIG_UPDATED`,
+    /// which follows a real `set_radio_config` broadcast and nothing else.
+    private var lastRadioConfigPersisted = true
 
     // RCU capture pipeline (labeled 0x6A LCD packet logger).
     // `var` (not `let`) so SwiftUI's @Bindable projection can drill into its
@@ -452,6 +462,9 @@ final class AmplifierViewModel {
                         errorMessage = "Invalid WebSocket URL"
                         return
                     }
+                    radioConfig = nil
+                    radioChangeNotSaved = false
+                    lastRadioConfigPersisted = true
                     // Proxy login is read (and cached) only for wss — a
                     // plain-ws user never touches the Keychain — and the
                     // header rule below drops it on anything but wss/https.
@@ -494,8 +507,9 @@ final class AmplifierViewModel {
                     ws.onTuneEvent = { [weak self] event in
                         self?.handleTuneEvent(event)
                     }
-                    ws.onRadioConfig = { [weak self] cfg in
+                    ws.onRadioConfig = { [weak self] cfg, persisted in
                         self?.radioConfig = cfg
+                        self?.lastRadioConfigPersisted = persisted ?? true
                     }
                     ws.onFatalError = { [weak self] error in
                         self?.handleProxyError(error)
@@ -1245,8 +1259,9 @@ final class AmplifierViewModel {
         // "Ready" while a connect fails behind the sheet, and the verbose
         // error only lands in `errorMessage`, surfaced in ConnectionView
         // hidden behind the sheet). CONNECTED resets the headline to idle;
-        // DISCONNECTED and CONFIG_UPDATED stay inert (the latter's effect
-        // arrives separately as a config_event).
+        // DISCONNECTED stays inert, and CONFIG_UPDATED only updates the
+        // "not saved" notice (the new config arrives as a config_event).
+        // During a sweep an ERROR doesn't replace the sweep headline.
         if event.isConnectionLifecycle {
             if event.isConnecting {
                 lastTuneEvent = event
@@ -1256,7 +1271,15 @@ final class AmplifierViewModel {
                     : event.message
                 errorMessage = banner
                 radioErrorBanner = banner
-                lastTuneEvent = event
+                // spe-remote broadcasts RADIO_ERROR to every client, e.g.
+                // another client's settings change refused mid-tune. During
+                // our sweep keep the sweep headline: a real rig failure ends
+                // the cycle with FAIL, which carries its own message.
+                if !isSweeping { lastTuneEvent = event }
+            } else if event.phase == "RADIO_CONFIG_UPDATED" {
+                // Follows the config broadcast of a real set_radio_config;
+                // its `persisted` flag says whether the change was saved.
+                radioChangeNotSaved = !lastRadioConfigPersisted
             } else if event.isConnectionEstablished {
                 // Rig is back — clear the stale connection-error banner,
                 // following the existing "clear on positive state change"
