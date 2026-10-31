@@ -10,7 +10,20 @@ removed on 2026-06-28. v2.0.4 – v2.0.9 are not itemised here; see the
 
 ## [Unreleased]
 
+### Added
+- **Radio picker** (#9, Vinod VU3ESV): a **RADIO** button next to SWEEP chooses the rig that drives the
+  tune (None / FlexRadio / SunSDR over TCI) and edits its settings. They apply live on the Pi through
+  `get_config` / `set_radio_config` and persist to its `config.yaml`. The Sweep sheet now sends
+  `radio_connect` / `radio_disconnect`, and `RADIO_*` lifecycle phases are handled like `FLEX_*`.
+  Needs spe-remote v3.0.1 or later (v3.0.0 has no `radio_connect`).
+
 ### Changed
+- The `.radioplugin` reports the app's release version in `plugin.json` and the extension's
+  `Info.plist` (was always 1.0.0 / 1.0), so the Amateur Radio Suite can tell a new plugin from an old one.
+  `release.sh` stops if either isn't stamped (#13, Vinod VU3ESV).
+- `release.sh` retries `stapler staple` up to four times, 20 s apart, when Apple's CloudKit drops the
+  ticket fetch (exit 68) or hasn't published it yet (exit 65) (#12, Vinod VU3ESV).
+- CI runs on `macos-15`; GitHub retires the `macos-14` runner on 2026-11-02 (#11, Vinod VU3ESV).
 - RCU captures are now written to `~/Documents/Tech/MacExpert-captures/` (was `~/Documents/MacExpert-captures/`),
   following the Documents folder reorganisation of 2026-10-30. Existing captures were moved there; the tools and
   the fixture / reverse-engineering docs use the new path.
