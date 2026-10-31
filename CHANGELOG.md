@@ -10,6 +10,11 @@ removed on 2026-06-28. v2.0.4 – v2.0.9 are not itemised here; see the
 
 ## [Unreleased]
 
+## [2.0.12] — 2026-10-31
+Released 2026-10-31 as [v2.0.12](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.12):
+`MacExpert-2.0.12-macOS.{zip,dmg}` (universal, notarized + stapled), `MacExpert-2.0.12.radioplugin`
+and `SHA256SUMS`. All four PRs below are by Vinod VU3ESV.
+
 ### Added
 - **Radio picker** (#9, Vinod VU3ESV): a **RADIO** button next to SWEEP chooses the rig that drives the
   tune (None / FlexRadio / SunSDR over TCI) and edits its settings. They apply live on the Pi through

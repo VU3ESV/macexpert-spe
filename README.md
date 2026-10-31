@@ -71,7 +71,7 @@ Universal (arm64 + x86_64), Developer ID Application signed:
 
 [**Latest release →**](https://github.com/vu2cpl/macexpert-spe/releases/latest)
 
-Download `MacExpert-X.Y.Z-macOS.zip` (or the `.dmg`), unzip, drag `MacExpert.app` to `/Applications`, double-click. Current release: [**v2.0.11**](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.11) (2026-10-09). Skip v2.0.10: its files contain a stale (June 2026) binary without the update check. Each release also carries `MacExpert-X.Y.Z.radioplugin` for the Amateur Radio Suite and a `SHA256SUMS` file. The build is **Apple-notarized and stapled** so Gatekeeper accepts it on first launch with no warning.
+Download `MacExpert-X.Y.Z-macOS.zip` (or the `.dmg`), unzip, drag `MacExpert.app` to `/Applications`, double-click. Current release: [**v2.0.12**](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.12) (2026-10-31): the radio picker for Flex or SunSDR/TCI tuning (needs spe-remote v3.0.1 or later), and the plugin now reports its real version. Skip v2.0.10: its files contain a stale (June 2026) binary without the update check. Each release also carries `MacExpert-X.Y.Z.radioplugin` for the Amateur Radio Suite and a `SHA256SUMS` file. The build is **Apple-notarized and stapled** so Gatekeeper accepts it on first launch with no warning.
 
 ### Updates
 
