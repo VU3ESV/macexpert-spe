@@ -52,6 +52,21 @@ struct TuneEvent: Decodable, Equatable {
     /// A connection *error* phase the UI should surface to the operator.
     var isConnectionError: Bool { phase == "RADIO_ERROR" || phase == "FLEX_ERROR" }
 
+    /// Short headline for a connection-error phase, from the message
+    /// spe-remote sends with it (websocket_handler.py / radio_controller.py),
+    /// so a refused settings change doesn't read as "Radio not reachable".
+    /// Unknown messages fall back to "Radio not reachable"; the message
+    /// itself is still shown under the headline.
+    var connectionErrorHeadline: String {
+        let m = message.lowercased()
+        if m.hasPrefix("no radio configured") { return "No radio configured" }
+        if m.hasPrefix("cannot change radio while a tune is running") { return "Radio change refused — tune running" }
+        if m.hasPrefix("bad set_radio_config") || m.hasPrefix("unknown radio kind") { return "Radio settings refused" }
+        if m.hasPrefix("could not write") { return "Radio change not saved" }
+        if m.contains("host is empty") { return "Radio host not set" }
+        return "Radio not reachable"
+    }
+
     /// A successful connection phase — the rig is up. Used to clear a
     /// stale connection-error banner once the radio comes back.
     var isConnectionEstablished: Bool { phase == "RADIO_CONNECTED" || phase == "FLEX_CONNECTED" }

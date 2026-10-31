@@ -10,6 +10,24 @@ removed on 2026-06-28. v2.0.4 – v2.0.9 are not itemised here; see the
 
 ## [Unreleased]
 
+### Fixed
+Follow-ups to the radio picker (#9), from the review:
+- **Apply waits for the Pi's settings.** In the RADIO sheet, Apply stays disabled until the `get_config` reply
+  has arrived, so a quick Apply can no longer save the placeholder `{"kind":"none"}`. It also stays disabled while
+  a field is invalid.
+- **No silent defaults.** Fields are checked with spe-remote's own rules: whole numbers in range for port, slice,
+  tune W, TRX and tune %; a hostname without spaces; a mode name. Problems are listed in the sheet. A non-numeric
+  field is no longer replaced by a default.
+- **Edits survive a config broadcast.** A `config_event` from another client no longer overwrites what's being
+  typed. The sheet says the settings changed on the Pi and offers **Reload**.
+- **"Not saved" is shown.** When the Pi applies a change live but can't write `config.yaml` (`persisted:false`),
+  the RADIO sheet and the Sweep panel say it reverts on restart.
+- **The Sweep headline names the actual RADIO_ERROR.** For example "No radio configured", "Radio settings refused",
+  "Radio change refused — tune running", "Radio change not saved"; "Radio not reachable" only for connect
+  failures. spe-remote broadcasts RADIO_ERROR to every client, so during a sweep an error no longer replaces the
+  sweep headline. A real rig failure ends the cycle with FAIL and its own message.
+- A new WebSocket connection starts with no radio config, so a previous server's config never stands in.
+
 ## [2.0.12] — 2026-10-31
 Released 2026-10-31 as [v2.0.12](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.12):
 `MacExpert-2.0.12-macOS.{zip,dmg}` (universal, notarized + stapled), `MacExpert-2.0.12.radioplugin`

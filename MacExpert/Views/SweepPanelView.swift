@@ -111,6 +111,14 @@ struct SweepPanelView: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if vm.radioChangeNotSaved {
+                    // The settings sheet closes on Apply, so say it here too.
+                    Label("Radio change not saved on the Pi — it reverts when spe-remote restarts.",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,7 +176,7 @@ struct SweepPanelView: View {
             return vm.isSweeping ? "Starting…" : "Ready"
         }
         if event.isConnecting       { return "Connecting to radio…" }
-        if event.isConnectionError  { return "Radio not reachable" }
+        if event.isConnectionError  { return event.connectionErrorHeadline }
         switch event.phase {
         case "SWEEP_DONE": return "Done"
         case "SUCCESS":    return "Cycle complete"
