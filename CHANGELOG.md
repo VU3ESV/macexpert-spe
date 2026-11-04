@@ -31,6 +31,19 @@ removed on 2026-06-28. v2.0.4 – v2.0.9 are not itemised here; see the
 - The Proxy login section says the login is **shared**: the LP-100A / LP-700 apps on the same Mac
   read the same `ShackProxy` item, so **Save** and **Remove** change it for them too.
 
+### Fixed
+- **No flashing while a WebSocket connect fails.** Each attempt reported "connected" right after
+  `resume()`, before the handshake, and retried every second because `connect()` reset the
+  backoff on every attempt. Now:
+  - an attempt counts as connected only on the server's first message;
+  - a failed attempt no longer reports "disconnected", so the status doesn't flip once a second;
+  - retries back off 1 → 2 → 4 → 8 → 16 s, and the backoff resets only on Connect or a successful
+    connection;
+  - a plain `ws://` request answered with HTTP 400 (a TLS port, e.g. a proxy) stops with "The server
+    expects TLS … turn on Use TLS (wss)" instead of retrying.
+- Reconnect attempts reuse the connection's `URLSession` instead of creating a new one each time
+  and never invalidating it; Disconnect still invalidates it.
+
 ## [2.0.12] — 2026-10-31
 Released 2026-10-31 as [v2.0.12](https://github.com/vu2cpl/macexpert-spe/releases/tag/v2.0.12):
 `MacExpert-2.0.12-macOS.{zip,dmg}` (universal, notarized + stapled), `MacExpert-2.0.12.radioplugin`

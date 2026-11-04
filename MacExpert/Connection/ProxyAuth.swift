@@ -90,6 +90,10 @@ enum ProxyAuth {
             return allowsCredentials(request.url) ? .loginRequired : .loginRequiresTLS
         }
         if status == 403 { return .forbidden }
+        // A plain ws:// upgrade answered with 400 is what a TLS listener (e.g.
+        // Caddy) says to an HTTP request: the server needs wss. Retrying the
+        // same plain request can never work.
+        if status == 400, !allowsCredentials(request.url) { return .serverExpectsTLS }
         if let code, untrustedCertificateCodes.contains(code) { return .certificateUntrusted }
         // TLS handshake failed outright (-1200). With Use TLS on, the usual
         // cause is a port that speaks plain HTTP (spe-remote without the
@@ -128,6 +132,8 @@ enum ProxyError: LocalizedError, Equatable {
     /// `wss://` handshake failed (NSURLErrorSecureConnectionFailed, -1200),
     /// typically because the port doesn't speak TLS.
     case tlsHandshakeFailed
+    /// 400 to a plain ws:// upgrade: the port speaks TLS.
+    case serverExpectsTLS
 
     var errorDescription: String? {
         switch self {
@@ -143,6 +149,8 @@ enum ProxyError: LocalizedError, Equatable {
             "Proxy TLS certificate not trusted — trust the Shack CA in Keychain Access, then Connect."
         case .tlsHandshakeFailed:
             "Secure connection failed — the server may not use TLS on this port. Turn off Use TLS (wss) or check the port, then Connect."
+        case .serverExpectsTLS:
+            "The server expects TLS (it answered HTTP 400 to a plain ws:// connection). Turn on Use TLS (wss), then Connect."
         }
     }
 }
